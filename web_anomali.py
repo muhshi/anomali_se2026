@@ -30,6 +30,66 @@ NAMA_INDIKATOR = {
     "135": "A8 - Anomali Lainnya",
 }
 
+# Deskripsi lengkap per jenis anomali
+DESKRIPSI_ANOMALI = [
+    {
+        "kode": "A1", "ind_belum": "128", "ind_sudah": "40",
+        "judul": "Biaya Produksi Dominan",
+        "deskripsi": "Usaha yang memiliki total biaya produksi lebih besar dari nilai produksi (omset), sehingga secara matematis usaha tersebut selalu merugi. Kondisi ini dicurigai sebagai kesalahan pencatatan karena tidak wajar secara ekonomi.",
+        "contoh": "Usaha dengan omset Rp 10 juta/bulan tetapi biaya bahan baku, tenaga kerja, dan operasional mencapai Rp 15 juta/bulan.",
+        "icon": "💰"
+    },
+    {
+        "kode": "A2", "ind_belum": "129", "ind_sudah": "41",
+        "judul": "Keuntungan Usaha",
+        "deskripsi": "Usaha yang melaporkan keuntungan (laba bersih) secara tidak wajar — terlalu tinggi atau negatif (rugi besar) secara konsisten. Anomali ini menandakan kemungkinan kesalahan dalam pengisian data keuangan usaha.",
+        "contoh": "Usaha kecil dengan omset Rp 5 juta/bulan tetapi melaporkan keuntungan Rp 50 juta/bulan, atau rugi terus-menerus tanpa penjelasan.",
+        "icon": "📈"
+    },
+    {
+        "kode": "A3", "ind_belum": "130", "ind_sudah": "42",
+        "judul": "Bukan Badan Usaha tapi Ada Penyertaan Modal Korporasi",
+        "deskripsi": "Usaha yang dicatat sebagai usaha perorangan (bukan PT/CV/koperasi dll) tetapi memiliki penyertaan modal dari korporasi. Hal ini secara hukum tidak konsisten dan menunjukkan kemungkinan kesalahan klasifikasi bentuk badan usaha.",
+        "contoh": "Usaha dicatat sebagai 'usaha perseorangan' namun ada modal yang bersumber dari perusahaan lain.",
+        "icon": "🏢"
+    },
+    {
+        "kode": "A4", "ind_belum": "131", "ind_sudah": "43",
+        "judul": "Data Keuangan MBG",
+        "deskripsi": "Usaha kategori Menengah-Besar-Gabungan (MBG) yang memiliki isian data keuangan yang tidak konsisten atau tidak wajar, seperti aset, pendapatan, dan pengeluaran yang saling bertentangan.",
+        "contoh": "Usaha skala menengah dengan aset ratusan juta tetapi pendapatan hanya jutaan rupiah, atau sebaliknya.",
+        "icon": "📊"
+    },
+    {
+        "kode": "A5", "ind_belum": "132", "ind_sudah": "44",
+        "judul": "Konsistensi Aset, Pekerja, dan Produksi Usaha",
+        "deskripsi": "Ketidaksesuaian antara skala aset usaha, jumlah tenaga kerja, dan nilai produksi. Ketiga variabel ini seharusnya proporsional; anomali terjadi bila salah satu terlalu besar atau kecil dibanding yang lain.",
+        "contoh": "Usaha dengan 50 tenaga kerja dan aset Rp 1 miliar tetapi hanya memproduksi barang senilai Rp 2 juta/bulan.",
+        "icon": "⚖️"
+    },
+    {
+        "kode": "A6", "ind_belum": "133", "ind_sudah": "45",
+        "judul": "Usaha Menengah & Besar Tanpa Internet",
+        "deskripsi": "Usaha berskala Menengah atau Besar yang tidak menggunakan internet untuk kegiatan usahanya. Di era digital, kondisi ini tidak wajar untuk usaha skala tersebut dan perlu dikonfirmasi kebenarannya.",
+        "contoh": "Pabrik dengan 100 karyawan dan omset miliaran rupiah tetapi mengisi 'tidak menggunakan internet' untuk kegiatan usaha.",
+        "icon": "🌐"
+    },
+    {
+        "kode": "A7", "ind_belum": "134", "ind_sudah": "46",
+        "judul": "Usaha Menengah & Besar Tanpa Laporan Keuangan",
+        "deskripsi": "Usaha berskala Menengah atau Besar yang tidak memiliki laporan keuangan. Secara regulasi dan praktik bisnis, usaha skala ini seharusnya memiliki pencatatan keuangan formal.",
+        "contoh": "Perusahaan dengan aset di atas Rp 500 juta atau 20+ tenaga kerja yang mengisi 'tidak memiliki laporan keuangan'.",
+        "icon": "📋"
+    },
+    {
+        "kode": "A8", "ind_belum": "135", "ind_sudah": None,
+        "judul": "Anomali Lainnya",
+        "deskripsi": "Kategori anomali tambahan yang tidak termasuk dalam A1-A7. Mencakup berbagai inkonsistensi data lain yang terdeteksi oleh sistem secara otomatis dan perlu diverifikasi langsung oleh petugas lapangan.",
+        "contoh": "Inkonsistensi data yang tidak terklasifikasi secara spesifik, misalnya data usaha yang tiba-tiba berubah drastis dibanding periode sebelumnya.",
+        "icon": "❓"
+    },
+]
+
 # Indikator yang "belum ditindaklanjuti"
 BELUM = {"128","129","130","131","132","133","134","135"}
 SUDAH = {"40","41","42","43","44","45","46"}
@@ -115,12 +175,13 @@ def get_tanggal_list():
 def nav(active=''):
     return f"""
     <nav class="nav">
-      <span class="nav-brand">Anomali <span>SE2026</span> · Demak</span>
+      <span class="nav-brand">Anomali <span>SE2026</span> &middot; Demak</span>
       <a href="/" class="{'active' if active=='home' else ''}">Dashboard</a>
       <a href="/kecamatan" class="{'active' if active=='kec' else ''}">Per Kecamatan</a>
       <a href="/sls" class="{'active' if active=='sls' else ''}">SLS/Sub-SLS</a>
       <a href="/indikator" class="{'active' if active=='ind' else ''}">Per Jenis</a>
       <a href="/mikro" class="{'active' if active=='mikro' else ''}">Kasus Mikro</a>
+      <a href="/panduan" class="{'active' if active=='panduan' else ''}">Panduan Anomali</a>
     </nav>"""
 
 # ─────────────────────────────────────────
@@ -501,6 +562,82 @@ def mikro_view():
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:16px">{pagi_links}</div>
     </div></body></html>""")
+
+# ─────────────────────────────────────────
+# PANDUAN ANOMALI
+# ─────────────────────────────────────────
+@app.route('/panduan')
+def panduan_view():
+    cards_html = ""
+    for a in DESKRIPSI_ANOMALI:
+        ind_info = f"Ind. {a['ind_belum']} (belum)"
+        if a['ind_sudah']:
+            ind_info += f" &middot; Ind. {a['ind_sudah']} (sudah)"
+        
+        cards_html += f"""
+        <div class="panduan-card">
+          <div class="panduan-header">
+            <span class="panduan-icon">{a['icon']}</span>
+            <div>
+              <div class="panduan-kode">{a['kode']}</div>
+              <div class="panduan-judul">{a['judul']}</div>
+            </div>
+            <span class="panduan-indkode">{ind_info}</span>
+          </div>
+          <div class="panduan-body">
+            <p class="panduan-desc">{a['deskripsi']}</p>
+            <div class="panduan-contoh">
+              <span class="contoh-label">📌 Contoh:</span>
+              <span class="contoh-text">{a['contoh']}</span>
+            </div>
+          </div>
+        </div>"""
+
+    style_extra = """
+    <style>
+      .panduan-grid{display:grid;gap:20px}
+      .panduan-card{background:#fff;border:1px solid #fcd9b6;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(232,93,4,.06);transition:.2s}
+      .panduan-card:hover{border-color:#f48c06;box-shadow:0 4px 16px rgba(232,93,4,.12);transform:translateY(-2px)}
+      .panduan-header{display:flex;align-items:center;gap:16px;padding:18px 20px;background:linear-gradient(135deg,#fff8f3,#fff);border-bottom:1px solid #fde8d0}
+      .panduan-icon{font-size:28px;flex-shrink:0}
+      .panduan-kode{font-size:11px;font-weight:700;color:#ea580c;text-transform:uppercase;letter-spacing:.5px}
+      .panduan-judul{font-size:15px;font-weight:700;color:#7c2d12;margin-top:2px}
+      .panduan-indkode{margin-left:auto;font-size:11px;color:#9a6a4e;background:#fff7ed;border:1px solid #fcd9b6;padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+      .panduan-body{padding:18px 20px}
+      .panduan-desc{font-size:13.5px;line-height:1.7;color:#374151;margin-bottom:14px}
+      .panduan-contoh{background:#fffbf5;border-left:3px solid #f97316;padding:10px 14px;border-radius:0 8px 8px 0}
+      .contoh-label{font-size:12px;font-weight:600;color:#ea580c;margin-right:6px}
+      .contoh-text{font-size:12.5px;color:#6b5a4e;line-height:1.6}
+      .info-box{background:linear-gradient(135deg,#fff7ed,#fef3ea);border:1px solid #fcd9b6;border-radius:12px;padding:18px 22px;margin-bottom:28px;display:flex;gap:14px;align-items:flex-start}
+      .info-box-icon{font-size:22px;flex-shrink:0;margin-top:2px}
+      .info-box-text{font-size:13px;color:#7c2d12;line-height:1.7}
+      .info-box-text strong{color:#ea580c}
+    </style>"""
+
+    return render_template_string(f"""<!DOCTYPE html><html>
+    <head><title>Panduan Anomali - SE2026</title>{BASE_STYLE}{style_extra}</head>
+    <body>
+    {nav('panduan')}
+    <div class="container">
+      <h1>Panduan Jenis Anomali SE2026</h1>
+      <div class="subtitle">Penjelasan dan kriteria setiap jenis anomali yang ditindaklanjuti</div>
+
+      <div class="info-box">
+        <div class="info-box-icon">ℹ️</div>
+        <div class="info-box-text">
+          Setiap anomali memiliki <strong>dua kode indikator</strong>:
+          indikator <strong>"belum" (128-135)</strong> untuk kasus yang belum diselesaikan,
+          dan indikator <strong>"sudah" (40-46)</strong> untuk kasus yang sudah ditindaklanjuti oleh petugas lapangan.
+          Tujuan pemantauan adalah menekan angka "belum" dan meningkatkan angka "sudah".
+        </div>
+      </div>
+
+      <div class="panduan-grid">
+        {cards_html}
+      </div>
+    </div>
+    </body></html>""")
+
 
 if __name__ == '__main__':
     if not os.path.exists(DB_FILE):
