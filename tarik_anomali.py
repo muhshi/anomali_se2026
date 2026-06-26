@@ -313,8 +313,9 @@ def main():
             
         upsert_agregat(connection, engine_type, current_date, data_kec)
         
-        # Ekstrak unique id_wilayah dari data_kec yang ada anomali (total_value > 0)
-        kec_ids = set([d["id_wilayah"] for d in data_kec])
+        # Hanya proses kecamatan yang punya setidaknya 1 total_value > 0
+        kec_ids = set([d["id_wilayah"] for d in data_kec if d.get("total_value") and int(d.get("total_value", 0)) > 0])
+        print(f"  [i] {len(kec_ids)} kecamatan punya anomali (dari {len(set(d['id_wilayah'] for d in data_kec))} total)")
         
         for kec in kec_ids:
             if not kec or len(kec) < 7: continue
@@ -326,7 +327,9 @@ def main():
             
             if data_desa:
                 upsert_agregat(connection, engine_type, current_date, data_desa)
-                desa_ids = set([d["id_wilayah"] for d in data_desa])
+                # Hanya proses desa yang punya setidaknya 1 total_value > 0
+                desa_ids = set([d["id_wilayah"] for d in data_desa if d.get("total_value") and int(d.get("total_value", 0)) > 0])
+                print(f"    [i] {len(desa_ids)} desa punya anomali di kecamatan {kec[:7]}")
                 
                 for desa in desa_ids:
                     if not desa or len(desa) < 10: continue
@@ -337,7 +340,9 @@ def main():
                     
                     if data_sls:
                         upsert_agregat(connection, engine_type, current_date, data_sls)
-                        sls_ids = set([d["id_wilayah"] for d in data_sls])
+                        # Hanya proses SLS yang punya setidaknya 1 total_value > 0
+                        sls_ids = set([d["id_wilayah"] for d in data_sls if d.get("total_value") and int(d.get("total_value", 0)) > 0])
+                        print(f"      [i] {len(sls_ids)} SLS punya anomali di desa {desa[:10]}")
                         
                         for sls in sls_ids:
                             if not sls or len(sls) < 14: continue
