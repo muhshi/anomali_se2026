@@ -7,6 +7,7 @@ Buka di browser: http://localhost:5050
 import sqlite3
 import os
 import urllib.parse
+import json
 from flask import Flask, render_template_string, request, g
 from datetime import datetime
 
@@ -222,11 +223,11 @@ def home():
 
     # Top 5 kecamatan
     top_kec = db.execute("""
-        SELECT nama_wilayah, SUM(total_value) as total
+        SELECT nama_wilayah, SUBSTR(id_wilayah,1,7) as id_wilayah, SUM(total_value) as total
         FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah='kecamatan'
           AND kode_indikator IN ('128','129','130','131','132','133','134','135')
-        GROUP BY nama_wilayah ORDER BY total DESC LIMIT 5
+        GROUP BY id_wilayah, nama_wilayah ORDER BY total DESC LIMIT 5
     """, (tgl,)).fetchall()
 
     max_val = top_kec[0]['total'] if top_kec else 1
@@ -234,10 +235,11 @@ def home():
     kec_rows = ""
     for i, row in enumerate(top_kec):
         pct_bar = round(row['total'] / max_val * 100)
+        kec_name_fmt = f"[{str(row['id_wilayah'])[-3:]}] {row['nama_wilayah']}"
         kec_rows += f"""
         <tr>
           <td><span style="color:#64748b;font-size:12px">#{i+1}</span>&nbsp; 
-              <a class="kec-link" href="/kecamatan?id={row['nama_wilayah']}&tgl={tgl}">{row['nama_wilayah']}</a></td>
+              <a class="kec-link" href="/kecamatan?id={row['nama_wilayah']}&tgl={tgl}">{kec_name_fmt}</a></td>
           <td><span class="num-big">{row['total']:,}</span>
             <div class="progress-bar"><div class="progress-fill" style="width:{pct_bar}%"></div></div>
           </td>
@@ -345,18 +347,18 @@ def kecamatan():
     # Query
     if kec_filter:
         rows = db.execute("""
-            SELECT nama_wilayah, kode_indikator, total_value
+            SELECT nama_wilayah, id_wilayah, kode_indikator, total_value
             FROM agregat_anomali
             WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND nama_wilayah=?
             ORDER BY CAST(kode_indikator AS INTEGER)
         """, (tgl, kec_filter)).fetchall()
     else:
         rows = db.execute("""
-            SELECT nama_wilayah, kode_indikator, SUM(total_value) as total_value
+            SELECT nama_wilayah, id_wilayah, kode_indikator, SUM(total_value) as total_value
             FROM agregat_anomali
             WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND total_value > 0
-            GROUP BY nama_wilayah, kode_indikator
-            ORDER BY nama_wilayah, CAST(kode_indikator AS INTEGER)
+            GROUP BY nama_wilayah, id_wilayah, kode_indikator
+            ORDER BY id_wilayah, CAST(kode_indikator AS INTEGER)
         """, (tgl,)).fetchall()
 
     # Group by kecamatan
@@ -364,7 +366,9 @@ def kecamatan():
     per_kec = defaultdict(list)
     for r in rows:
         if r['total_value'] and r['total_value'] > 0:
-            per_kec[r['nama_wilayah']].append(r)
+            kec_id_fmt = str(r['id_wilayah'])[-3:]
+            kec_fmt = f"[{kec_id_fmt}] {r['nama_wilayah']}"
+            per_kec[kec_fmt].append(r)
 
     table_rows = ""
     for kec_name in sorted(per_kec.keys()):
@@ -699,7 +703,7 @@ def mikro_view():
 
     total_kasus = db.execute("SELECT COUNT(*) FROM kasus_anomali_mikro WHERE tanggal_tarik=?", (tgl,)).fetchone()[0]
     rows = db.execute("""
-        SELECT kode_wilayah, anomali_no, anomali_title, assignment_id, is_resolved, link_fasih
+        SELECT kode_wilayah, anomali_no, anomali_title, assignment_id, is_resolved, link_fasih, raw_data
         FROM kasus_anomali_mikro
         WHERE tanggal_tarik=?
         ORDER BY kode_wilayah, anomali_no
@@ -714,11 +718,23 @@ def mikro_view():
         resolved = r['is_resolved']
         badge = "<span class='badge badge-green'>✓ Selesai</span>" if resolved else "<span class='badge badge-red'>✗ Belum</span>"
         link_html = f"<a href='{r['link_fasih']}' target='_blank' style='font-size:11px'>Buka FASIH</a>" if r['link_fasih'] else "-"
+        
+        # Coba ekstrak info unit / keluarga dari JSON
+        unit_info = ""
+        try:
+            if r['raw_data']:
+                d = json.loads(r['raw_data'])
+                nama = d.get('nama_krt') or d.get('nama_usaha') or d.get('nama_perusahaan') or d.get('nama_kepala_keluarga') or d.get('nama') or ''
+                if nama:
+                    unit_info = f"<div style='font-weight:600;color:#3730a3;margin-bottom:4px;font-size:13px'>👤 {nama}</div>"
+        except:
+            pass
+            
         table_rows += f"""
         <tr>
           <td><code style="font-size:11px;color:#94a3b8">{r['kode_wilayah']}</code></td>
           <td><span class="badge badge-gray">Anomali-{r['anomali_no']}</span></td>
-          <td style="max-width:300px;font-size:12px">{r['anomali_title'] or '-'}</td>
+          <td style="max-width:300px;font-size:12px">{unit_info}{r['anomali_title'] or '-'}</td>
           <td style="font-size:12px;color:#94a3b8">{r['assignment_id'] or '-'}</td>
           <td>{badge}</td>
           <td>{link_html}</td>

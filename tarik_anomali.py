@@ -80,6 +80,7 @@ def init_db(config):
             link_fasih TEXT,
             kode_wilayah VARCHAR(20),
             is_resolved INT,
+            raw_data TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (tanggal_tarik, id_kasus)
         )
@@ -126,6 +127,7 @@ def init_db(config):
             link_fasih TEXT,
             kode_wilayah VARCHAR(20),
             is_resolved INT,
+            raw_data TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY unique_mikro (tanggal_tarik, id_kasus)
         )
@@ -302,7 +304,8 @@ def upsert_mikro(connection, engine_type, current_date, data_list):
             d.get("assignment_id", ""),
             d.get("link_fasih", ""),
             d.get("kode_wilayah", ""),
-            1 if d.get("is_resolved") else 0
+            1 if d.get("is_resolved") else 0,
+            json.dumps(d)
         ))
         
     cursor = connection.cursor()
@@ -311,20 +314,22 @@ def upsert_mikro(connection, engine_type, current_date, data_list):
             q = """
             INSERT INTO kasus_anomali_mikro (
                 tanggal_tarik, id_kasus, source_table, source_type, anomali_no, 
-                id_indikator, anomali_title, assignment_id, link_fasih, kode_wilayah, is_resolved
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                id_indikator, anomali_title, assignment_id, link_fasih, kode_wilayah, is_resolved, raw_data
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE 
                 is_resolved = VALUES(is_resolved),
+                raw_data = VALUES(raw_data),
                 updated_at = NOW()
             """
         else:
             q = """
             INSERT INTO kasus_anomali_mikro (
                 tanggal_tarik, id_kasus, source_table, source_type, anomali_no, 
-                id_indikator, anomali_title, assignment_id, link_fasih, kode_wilayah, is_resolved
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id_indikator, anomali_title, assignment_id, link_fasih, kode_wilayah, is_resolved, raw_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tanggal_tarik, id_kasus) DO UPDATE SET
                 is_resolved = excluded.is_resolved,
+                raw_data = excluded.raw_data,
                 updated_at = CURRENT_TIMESTAMP
             """
         cursor.executemany(q, rows)
