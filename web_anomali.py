@@ -91,6 +91,12 @@ DESKRIPSI_ANOMALI = [
     },
 ]
 
+TOOLTIP_ANOMALI = {}
+for d in DESKRIPSI_ANOMALI:
+    TOOLTIP_ANOMALI[d['ind_belum']] = d['deskripsi']
+    if d['ind_sudah']:
+        TOOLTIP_ANOMALI[d['ind_sudah']] = d['deskripsi']
+
 # Indikator yang "belum ditindaklanjuti"
 BELUM = {"128","129","130","131","132","133","134","135"}
 SUDAH = {"40","41","42","43","44","45","46"}
@@ -180,7 +186,6 @@ def nav(active=''):
       <a href="/" class="{'active' if active=='home' else ''}">Dashboard</a>
       <a href="/kecamatan" class="{'active' if active=='kec' else ''}">Per Kecamatan</a>
       <a href="/sls" class="{'active' if active=='sls' else ''}">SLS/Sub-SLS</a>
-      <a href="/indikator" class="{'active' if active=='ind' else ''}">Per Jenis</a>
       <a href="/mikro" class="{'active' if active=='mikro' else ''}">Kasus Mikro</a>
       <a href="/panduan" class="{'active' if active=='panduan' else ''}">Panduan Anomali</a>
     </nav>"""
@@ -238,6 +243,28 @@ def home():
           </td>
         </tr>"""
 
+    # Rekap per jenis
+    ind_rows = db.execute("""
+        SELECT kode_indikator, SUM(total_value) as total
+        FROM agregat_anomali
+        WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND total_value > 0
+        GROUP BY kode_indikator
+        ORDER BY total DESC
+    """, (tgl,)).fetchall()
+    
+    ind_table_rows = ""
+    for r in ind_rows:
+        kode = str(r['kode_indikator'])
+        cls = 'badge-red' if kode in BELUM else 'badge-green'
+        status = 'Belum Ditindaklanjuti' if kode in BELUM else 'Sudah Ditindaklanjuti'
+        ind_table_rows += f"""
+        <tr>
+          <td><code style="font-size:12px">{kode}</code></td>
+          <td><span class="badge {cls}">{NAMA_INDIKATOR.get(kode, kode)}</span></td>
+          <td style="font-size:11px;color:#64748b">{status}</td>
+          <td class="num" style="{'color:#dc2626' if kode in BELUM else 'color:#16a34a'};font-size:14px">{r['total']:,}</td>
+        </tr>"""
+
     tgl_options = "".join([f"<option value='{t}' {'selected' if t==tgl else ''}>{t}</option>" for t in tanggal_list])
 
     return render_template_string(f"""<!DOCTYPE html><html>
@@ -275,9 +302,17 @@ def home():
         </div>
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap" style="margin-bottom: 24px">
         <div class="table-head"><h2>🏆 Top Kecamatan (Anomali Belum Ditindaklanjuti)</h2></div>
         <table><tbody>{kec_rows or "<tr><td class='empty'>Tidak ada data</td></tr>"}</tbody></table>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-head"><h2>📊 Rekap per Jenis Anomali</h2></div>
+        <table>
+          <thead><tr><th>Kode</th><th>Jenis Anomali</th><th>Status</th><th>Jumlah (dari kecamatan)</th></tr></thead>
+          <tbody>{ind_table_rows or "<tr><td colspan='4' class='empty'>Tidak ada data</td></tr>"}</tbody>
+        </table>
       </div>
     </div>
     </body></html>""")
@@ -299,12 +334,12 @@ def kecamatan():
     kec_list = db.execute("""
         SELECT DISTINCT nama_wilayah, id_wilayah FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah='kecamatan'
-        ORDER BY nama_wilayah
+        ORDER BY id_wilayah
     """, (tgl,)).fetchall()
 
     tgl_options = "".join([f"<option value='{t}' {'selected' if t==tgl else ''}>{t}</option>" for t in tanggal_list])
     kec_options = "<option value=''>-- Semua Kecamatan --</option>" + "".join([
-        f"<option value='{r['nama_wilayah']}' {'selected' if r['nama_wilayah']==kec_filter else ''}>{r['nama_wilayah']}</option>"
+        f"<option value='{r['nama_wilayah']}' {'selected' if r['nama_wilayah']==kec_filter else ''}>[{str(r['id_wilayah'])[-3:]}] {r['nama_wilayah']}</option>"
         for r in kec_list])
 
     # Query
@@ -491,6 +526,9 @@ def sls_view():
         if r['nama_kecamatan']: lokasi.append(r['nama_kecamatan'])
         if r['nama_desa']:       lokasi.append(r['nama_desa'])
         lokasi_str = " › ".join(lokasi) if lokasi else ""
+        desc = TOOLTIP_ANOMALI.get(kode, "")
+        tooltip_html = f' title="{desc}" style="cursor:help;white-space:nowrap"' if desc else ' style="white-space:nowrap"'
+        
         table_rows += f"""
         <tr>
           <td>
@@ -498,7 +536,7 @@ def sls_view():
             <div style="font-size:12px;font-weight:600;color:#1a1a2e;margin-top:2px">{r['nama_wilayah'] or '-'}</div>
             {"<div style='font-size:11px;color:#9a6a4e;margin-top:1px'>"+lokasi_str+"</div>" if lokasi_str else ""}
           </td>
-          <td><span class="badge {cls_badge}" style="white-space:nowrap">{NAMA_INDIKATOR.get(kode, kode)}</span></td>
+          <td><span class="badge {cls_badge}"{tooltip_html}>{NAMA_INDIKATOR.get(kode, kode)}</span></td>
           <td style="text-align:right"><span class="num" style="{cls_num};font-size:15px">{r['total_value']:,}</span></td>
         </tr>"""
 
