@@ -1,0 +1,84 @@
+{
+  "database": {
+    "engine": "sqlite",
+    "host": "localhost",
+    "user": "root",
+    "password": "your_password",
+    "database_name": "fasih_db",
+    "sqlite_file": "anomali_se2026.db"
+  },
+  "indicators": [
+    {
+      "kode": "A1", "ind_belum": "128", "ind_sudah": "40",
+      "judul": "Biaya Produksi Dominan",
+      "deskripsi": "Usaha yang memiliki total biaya produksi lebih besar dari nilai produksi (omset), sehingga secara matematis usaha tersebut selalu merugi. Kondisi ini dicurigai sebagai kesalahan pencatatan karena tidak wajar secara ekonomi.",
+      "contoh": "Usaha dengan omset Rp 10 juta/bulan tetapi biaya bahan baku, tenaga kerja, dan operasional mencapai Rp 15 juta/bulan.",
+      "icon": "💰",
+      "type": "usaha",
+      "anomali_no": 1
+    },
+    {
+      "kode": "A2", "ind_belum": "129", "ind_sudah": "41",
+      "judul": "Keuntungan Usaha",
+      "deskripsi": "Usaha yang melaporkan keuntungan (laba bersih) secara tidak wajar \u2014 terlalu tinggi atau negatif (rugi besar) secara konsisten. Anomali ini menandakan kemungkinan kesalahan dalam pengisian data keuangan usaha.",
+      "contoh": "Usaha kecil dengan omset Rp 5 juta/bulan tetapi melaporkan keuntungan Rp 50 juta/bulan, atau rugi terus-menerus tanpa penjelasan.",
+      "icon": "📈",
+      "type": "usaha",
+      "anomali_no": 2
+    },
+    {
+      "kode": "A3", "ind_belum": "130", "ind_sudah": "42",
+      "judul": "Bukan Badan Usaha tapi Ada Penyertaan Modal Korporasi",
+      "deskripsi": "Usaha yang dicatat sebagai usaha perorangan (bukan PT/CV/koperasi dll) tetapi memiliki penyertaan modal dari korporasi. Hal ini secara hukum tidak konsisten dan menunjukkan kemungkinan kesalahan klasifikasi bentuk badan usaha.",
+      "contoh": "Usaha dicatat sebagai 'usaha perseorangan' namun ada modal yang bersumber dari perusahaan lain.",
+      "icon": "🏢",
+      "type": "usaha",
+      "anomali_no": 3
+    },
+    {
+      "kode": "A4", "ind_belum": "131", "ind_sudah": "43",
+      "judul": "Data Keuangan MBG",
+      "deskripsi": "Usaha kategori Menengah-Besar-Gabungan (MBG) yang memiliki isian data keuangan yang tidak konsisten atau tidak wajar, seperti aset, pendapatan, dan pengeluaran yang saling bertentangan.",
+      "contoh": "Usaha skala menengah dengan aset ratusan juta tetapi pendapatan hanya jutaan rupiah, atau sebaliknya.",
+      "icon": "📊",
+      "type": "usaha",
+      "anomali_no": 4
+    },
+    {
+      "kode": "A5", "ind_belum": "132", "ind_sudah": "44",
+      "judul": "Konsistensi Aset, Pekerja, dan Produksi Usaha",
+      "deskripsi": "Ketidaksesuaian antara skala aset usaha, jumlah tenaga kerja, dan nilai produksi. Ketiga variabel ini seharusnya proporsional; anomali terjadi bila salah satu terlalu besar atau kecil dibanding yang lain.",
+      "contoh": "Usaha dengan 50 tenaga kerja dan aset Rp 1 miliar tetapi hanya memproduksi barang senilai Rp 2 juta/bulan.",
+      "icon": "⚖️",
+      "type": "usaha",
+      "anomali_no": 5
+    },
+    {
+      "kode": "A6", "ind_belum": "133", "ind_sudah": "45",
+      "judul": "Usaha Menengah & Besar Tanpa Internet",
+      "deskripsi": "Usaha berskala Menengah atau Besar yang tidak menggunakan internet untuk kegiatan usahanya. Di era digital, kondisi ini tidak wajar untuk usaha skala tersebut dan perlu dikonfirmasi kebenarannya.",
+      "contoh": "Pabrik dengan 100 karyawan dan omset miliaran rupiah tetapi mengisi 'tidak menggunakan internet' untuk kegiatan usaha.",
+      "icon": "🌐",
+      "type": "usaha",
+      "anomali_no": 6
+    },
+    {
+      "kode": "A7", "ind_belum": "134", "ind_sudah": "46",
+      "judul": "Usaha Menengah & Besar Tanpa Laporan Keuangan",
+      "deskripsi": "Usaha berskala Menengah atau Besar yang tidak memiliki laporan keuangan. Secara regulasi dan praktik bisnis, usaha skala ini seharusnya memiliki pencatatan keuangan formal.",
+      "contoh": "Perusahaan dengan aset di atas Rp 500 juta atau 20+ tenaga kerja yang mengisi 'tidak memiliki laporan keuangan'.",
+      "icon": "📋",
+      "type": "usaha",
+      "anomali_no": 7
+    },
+    {
+      "kode": "A8", "ind_belum": "135", "ind_sudah": "47",
+      "judul": "Anomali Lainnya",
+      "deskripsi": "Kategori anomali tambahan yang tidak termasuk dalam A1-A7. Mencakup berbagai inkonsistensi data lain yang terdeteksi oleh sistem secara otomatis dan perlu diverifikasi langsung oleh petugas lapangan.",
+      "contoh": "Inkonsistensi data yang tidak terklasifikasi secara spesifik, misalnya data usaha yang tiba-tiba berubah drastis dibanding periode sebelumnya.",
+      "icon": "❓",
+      "type": "usaha",
+      "anomali_no": 8
+    }
+  ]
+}

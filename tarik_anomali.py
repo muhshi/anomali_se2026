@@ -2,6 +2,7 @@ import json
 import time
 import os
 import random
+import requests
 from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.chrome.options import Options
@@ -164,42 +165,26 @@ def open_browser_and_login():
 # Counter error HTML berturut-turut (login expired detection)
 _html_error_count = 0
 _HTML_ERROR_THRESHOLD = 3
+_session = None
 
+def init_session(driver):
+    global _session
+    _session = requests.Session()
+    # Pindahkan semua cookies dari Selenium ke requests Session
+    for cookie in driver.get_cookies():
+        _session.cookies.set(cookie["name"], cookie["value"])
 
 def fetch_api_get(driver, url, max_retries=3):
-    global _html_error_count
-    js_script = """
-    var callback = arguments[arguments.length - 1];
-    var url = arguments[0];
+    global _html_error_count, _session
     
-    fetch(url, {
-        method: 'GET',
-        headers: {
-            'Accept': '*/*'
-        },
-        credentials: 'same-origin'
-    })
-    .then(function(response) {
-        return response.text().then(function(text) {
-            callback({status: response.status, body: text});
-        });
-    })
-    .catch(function(err) {
-        callback({error: err.message || err.toString()});
-    });
-    """
-    
+    if _session is None:
+        init_session(driver)
+        
     for attempt in range(1, max_retries + 1):
         try:
-            driver.set_script_timeout(120)
-            result = driver.execute_async_script(js_script, url)
-            
-            if not result or "error" in result:
-                print(f"    [!] Fetch error: {result.get('error', 'Unknown')}")
-                return None
-            
-            status = result.get("status", 0)
-            body = result.get("body", "")
+            res = _session.get(url, timeout=30)
+            status = res.status_code
+            body = res.text
             
             if "<!DOCTYPE" in body or "<html>" in body.lower():
                 _html_error_count += 1
@@ -208,12 +193,14 @@ def fetch_api_get(driver, url, max_retries=3):
                 if _html_error_count >= _HTML_ERROR_THRESHOLD:
                     print("\n" + "!"*60)
                     print("  SESSION EXPIRED!")
-                    print("  Silakan login ulang di browser Chrome yang terbuka,")
-                    print("  pastikan sudah masuk ke halaman dashboard,")
-                    print("  lalu kembali ke sini dan tekan ENTER untuk melanjutkan.")
+                    print("  1. Buka browser Chrome yang sedang terbuka")
+                    print("  2. Refresh (F5) halaman web-nya")
+                    print("  3. Pastikan sudah masuk ke halaman dashboard / login ulang")
+                    print("  4. Lalu kembali ke sini dan tekan ENTER untuk melanjutkan.")
                     print("!"*60)
-                    input("\n>>> Tekan ENTER setelah login ulang... ")
+                    input("\n>>> Tekan ENTER setelah refresh/login ulang... ")
                     _html_error_count = 0  # reset counter
+                    init_session(driver) # Ambil cookie terbaru
                     continue  # coba ulang request yang sama
                 return None
                 
@@ -226,9 +213,10 @@ def fetch_api_get(driver, url, max_retries=3):
             
             # Sukses - reset counter HTML error
             _html_error_count = 0
-            return json.loads(body)
+            return res.json()
             
         except Exception as e:
+            print(f"    [!] Error di fetch_api_get: {e}")
             time.sleep(attempt * 3)
             
     return None
@@ -291,6 +279,15 @@ def upsert_agregat(connection, engine_type, current_date, data_list):
 
 def upsert_mikro(connection, engine_type, current_date, data_list):
     if not data_list: return 0
+    
+    # Extract data if it is wrapped in a dict
+    if isinstance(data_list, dict) and "data" in data_list:
+        data_list = data_list["data"]
+    elif isinstance(data_list, dict):
+        data_list = [data_list] # Just in case it's a single object
+        
+    if not data_list or not isinstance(data_list, list): return 0
+    
     rows = []
     for d in data_list:
         rows.append((
@@ -350,7 +347,30 @@ def main():
     connection, engine_type = init_db(config)
     
     current_date = datetime.now().strftime('%Y-%m-%d')
-    indikator_list = "40,128,41,129,42,130,43,131,44,132,45,133,46,134,135"
+    
+    # Generate indikator_list dan meta info dari config
+    indikator_list_arr = []
+    pasangan_config = {}
+    anomali_meta = {}
+    
+    for ind in config.get('indicators', []):
+        if ind.get('ind_belum'):
+            indikator_list_arr.append(str(ind['ind_belum']))
+        if ind.get('ind_sudah'):
+            indikator_list_arr.append(str(ind['ind_sudah']))
+            if ind.get('ind_belum'):
+                pasangan_config[str(ind['ind_belum'])] = str(ind['ind_sudah'])
+                
+        # Simpan meta informasi untuk tiap kode indikator
+        meta = {"type": ind.get("type", "usaha"), "anomali_no": ind.get("anomali_no", 1)}
+        if ind.get('ind_belum'): anomali_meta[str(ind['ind_belum'])] = meta
+        if ind.get('ind_sudah'): anomali_meta[str(ind['ind_sudah'])] = meta
+        
+    indikator_list = ",".join(indikator_list_arr)
+    if not indikator_list:
+        print("Error: Tidak ada indikator yang dikonfigurasi di config.json!")
+        return
+        
     kabupaten_code = "3321" # DEMAK
     
     base_url = "https://dashboard-se2026.apps.bps.go.id/api/agregat/fasih"
@@ -428,23 +448,33 @@ def main():
                                         
                                         url_mikro = f"{mikro_url}?kode_wilayah={subsls_code}&indikator={ind}"
                                         
-                                        # Pasangan indikator (belum ditindaklanjuti dgn sudah ditindaklanjuti)
-                                        pasangan = {
-                                            "128": "40", "129": "41", "130": "42", 
-                                            "131": "43", "132": "44", "133": "45", 
-                                            "134": "46", "135": "47"
-                                        }
-                                        if ind in pasangan:
-                                            url_mikro += f"&sudah_indikator={pasangan[ind]}"
+                                        # Ambil pasangan dari config (jika belum ditindaklanjuti)
+                                        if str(ind) in pasangan_config:
+                                            url_mikro += f"&sudah_indikator={pasangan_config[str(ind)]}"
+                                            
+                                        # API BPS mewajibkan parameter type dan anomali_no
+                                        # Ambil meta dari config
+                                        meta = anomali_meta.get(str(ind), {"type": "usaha", "anomali_no": 1})
+                                        anomali_no = meta["anomali_no"]
+                                        tipe = meta["type"]
+                                            
+                                        url_mikro += f"&type={tipe}&anomali_no={anomali_no}"
                                         
                                         cached_mikro = url_mikro in cache
                                         print(f"        [>] Fetch Kasus Anomali di Sub-SLS {subsls_code} Indikator {ind}{' [cache]' if cached_mikro else ''}")
                                         if not cached_mikro: delay()
                                             
+                                        print(f"            [DEBUG] URL: {url_mikro}")
                                         data_kasus = fetch_with_cache(driver, url_mikro, cache, current_date)
-                                        if data_kasus:
+                                        print(f"            [DEBUG] Tipe data_kasus: {type(data_kasus)}, Truthy: {bool(data_kasus)}")
+                                        
+                                        if data_kasus is not None:
+                                            # Kita ganti if data_kasus: menjadi if data_kasus is not None:
+                                            # agar list kosong [] atau dict kosong {} tetap diproses / dilog
                                             inserted = upsert_mikro(connection, engine_type, current_date, data_kasus)
                                             print(f"            + Disimpan {inserted} kasus mikro.")
+                                        else:
+                                            print(f"            [!] data_kasus is NONE!")
                                             
     except Exception as e:
         import traceback

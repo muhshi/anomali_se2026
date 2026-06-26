@@ -1,0 +1,22 @@
+# Database & Credentials
+config.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache files
+cache_*.json
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
