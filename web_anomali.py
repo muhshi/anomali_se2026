@@ -6,6 +6,7 @@ Buka di browser: http://localhost:5050
 
 import sqlite3
 import os
+import urllib.parse
 from flask import Flask, render_template_string, request, g
 from datetime import datetime
 
@@ -392,7 +393,7 @@ def sls_view():
         SELECT DISTINCT nama_wilayah as nama_kecamatan, SUBSTR(id_wilayah,1,7) as kec_id
         FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND total_value > 0
-        ORDER BY nama_wilayah
+        ORDER BY kec_id
     """, (tgl,)).fetchall()
 
     # Daftar desa (filter by kecamatan jika dipilih)
@@ -405,7 +406,7 @@ def sls_view():
     if kec_filter:
         desa_query += " AND SUBSTR(id_wilayah,1,7)=?"
         desa_query_params.append(kec_filter)
-    desa_query += " ORDER BY nama_wilayah"
+    desa_query += " ORDER BY desa_id"
     desa_list = db.execute(desa_query, desa_query_params).fetchall()
 
     # Build query for SLS/sub-SLS
@@ -421,6 +422,20 @@ def sls_view():
         where_extra += " AND kode_indikator=?"
         params.append(ind_filter)
 
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    count_query = f"""
+        SELECT COUNT(*) as total, COALESCE(SUM(total_value), 0) as total_kasus
+        FROM agregat_anomali a
+        WHERE tanggal_tarik=? AND level_wilayah=? AND total_value > 0
+        {where_extra}
+    """
+    stats = db.execute(count_query, params).fetchone()
+    total_rows = stats['total']
+    total_kasus = stats['total_kasus']
+
     rows = db.execute(f"""
         SELECT 
             id_wilayah, nama_wilayah, level_wilayah, kode_indikator, total_value,
@@ -430,12 +445,8 @@ def sls_view():
         WHERE tanggal_tarik=? AND level_wilayah=? AND total_value > 0
         {where_extra}
         ORDER BY total_value DESC
-        LIMIT 300
-    """, params).fetchall()
-
-    # Hitung total
-    total_kasus = sum(r['total_value'] for r in rows)
-    total_wilayah = len(set(r['id_wilayah'] for r in rows))
+        LIMIT ? OFFSET ?
+    """, params + [per_page, offset]).fetchall()
 
     tgl_options = "".join([f"<option value='{t}' {'selected' if t==tgl else ''}>{t}</option>" for t in tanggal_list])
     level_options = "".join([
@@ -443,17 +454,33 @@ def sls_view():
         for lv in ['sub_sls', 'sls', 'desa', 'kecamatan']
     ])
     kec_options = "<option value=''>-- Semua Kecamatan --</option>" + "".join([
-        f"<option value='{r['kec_id']}' {'selected' if r['kec_id']==kec_filter else ''}>{r['nama_kecamatan']}</option>"
+        f"<option value='{r['kec_id']}' {'selected' if r['kec_id']==kec_filter else ''}>[{r['kec_id'][-3:]}] {r['nama_kecamatan']}</option>"
         for r in kec_list
     ])
     desa_options = "<option value=''>-- Semua Desa --</option>" + "".join([
-        f"<option value='{r['desa_id']}' {'selected' if r['desa_id']==desa_filter else ''}>{r['nama_desa'] or r['desa_id']}</option>"
+        f"<option value='{r['desa_id']}' {'selected' if r['desa_id']==desa_filter else ''}>[{r['desa_id'][-3:]}] {r['nama_desa'] or r['desa_id']}</option>"
         for r in desa_list
     ])
     ind_options = "<option value=''>-- Semua Indikator --</option>" + "".join([
         f"<option value='{k}' {'selected' if k==ind_filter else ''}>{v}</option>"
         for k, v in NAMA_INDIKATOR.items() if k in BELUM
     ])
+
+    args = request.args.copy()
+    def page_url(p):
+        args['page'] = p
+        return f"/sls?{urllib.parse.urlencode(args)}"
+    
+    total_pages = (total_rows + per_page - 1) // per_page
+    pagi_html = ""
+    if total_pages > 1:
+        pagi_html += f'<div style="display:flex;gap:8px;align-items:center;margin-top:16px">'
+        if page > 1:
+            pagi_html += f'<a href="{page_url(page-1)}"><button type="button" style="padding:6px 12px;background:#e2e8f0;color:#1e293b">Prev</button></a>'
+        pagi_html += f'<span style="font-size:13px;color:#6b5a4e">Halaman {page} dari {total_pages}</span>'
+        if page < total_pages:
+            pagi_html += f'<a href="{page_url(page+1)}"><button type="button" style="padding:6px 12px;background:#e2e8f0;color:#1e293b">Next</button></a>'
+        pagi_html += f'</div>'
 
     table_rows = ""
     for r in rows:
@@ -538,7 +565,7 @@ def sls_view():
       </div>
 
       <div class="stat-row">
-        <div class="stat-item"><span>Wilayah ditemukan</span><strong>{total_wilayah}</strong></div>
+        <div class="stat-item"><span>Wilayah ditemukan</span><strong>{total_rows}</strong></div>
         <div class="stat-item"><span>Total kasus</span><strong style="color:#dc2626">{total_kasus:,}</strong></div>
         <div class="stat-item"><span>Baris ditampilkan</span><strong>{len(rows)}</strong></div>
       </div>
@@ -551,6 +578,7 @@ def sls_view():
           <tbody>{table_rows or "<tr><td colspan='3' class='empty'>Tidak ada data untuk filter ini</td></tr>"}</tbody>
         </table>
       </div>
+      {pagi_html}
     </div></body></html>""")
 
 
