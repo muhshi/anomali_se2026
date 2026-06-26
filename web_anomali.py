@@ -40,55 +40,59 @@ BASE_STYLE = """
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-  a{color:#60a5fa;text-decoration:none}
+  body{font-family:'Inter',sans-serif;background:#fdf7f2;color:#1a1a2e;min-height:100vh}
+  a{color:#c2440e;text-decoration:none}
   a:hover{text-decoration:underline}
-  .nav{background:#1e2330;border-bottom:1px solid #2d3748;padding:14px 32px;display:flex;align-items:center;gap:24px;position:sticky;top:0;z-index:100}
-  .nav-brand{font-size:16px;font-weight:700;color:#f1f5f9;letter-spacing:.3px}
-  .nav-brand span{color:#3b82f6}
-  .nav a{color:#94a3b8;font-size:13px;font-weight:500;padding:6px 10px;border-radius:6px;transition:.15s}
-  .nav a:hover,.nav a.active{background:#2d3748;color:#e2e8f0;text-decoration:none}
+  .nav{background:linear-gradient(135deg,#e85d04,#f48c06);border-bottom:none;padding:14px 32px;display:flex;align-items:center;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(232,93,4,.25)}
+  .nav-brand{font-size:16px;font-weight:700;color:#fff;letter-spacing:.3px}
+  .nav-brand span{color:#fde68a}
+  .nav a{color:rgba(255,255,255,.8);font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;transition:.15s}
+  .nav a:hover,.nav a.active{background:rgba(255,255,255,.2);color:#fff;text-decoration:none}
   .container{max-width:1200px;margin:0 auto;padding:32px 24px}
-  h1{font-size:22px;font-weight:700;color:#f1f5f9;margin-bottom:4px}
-  .subtitle{font-size:13px;color:#64748b;margin-bottom:24px}
+  h1{font-size:22px;font-weight:700;color:#7c2d12;margin-bottom:4px}
+  .subtitle{font-size:13px;color:#9a6a4e;margin-bottom:24px}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}
-  .card{background:#1e2330;border:1px solid #2d3748;border-radius:12px;padding:20px;transition:.2s}
-  .card:hover{border-color:#3b82f6;transform:translateY(-1px)}
-  .card-label{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-  .card-value{font-size:28px;font-weight:700;color:#f1f5f9}
-  .card-value.red{color:#f87171}
-  .card-value.green{color:#4ade80}
-  .card-value.blue{color:#60a5fa}
-  .card-value.yellow{color:#fbbf24}
-  .table-wrap{background:#1e2330;border:1px solid #2d3748;border-radius:12px;overflow:hidden;margin-bottom:24px}
-  .table-head{padding:16px 20px;border-bottom:1px solid #2d3748;display:flex;align-items:center;justify-content:space-between}
-  .table-head h2{font-size:14px;font-weight:600;color:#f1f5f9}
+  .card{background:#fff;border:1px solid #fcd9b6;border-radius:12px;padding:20px;transition:.2s;box-shadow:0 1px 4px rgba(232,93,4,.06)}
+  .card:hover{border-color:#f48c06;transform:translateY(-2px);box-shadow:0 4px 16px rgba(232,93,4,.12)}
+  .card-label{font-size:12px;color:#9a6a4e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+  .card-value{font-size:28px;font-weight:700;color:#1a1a2e}
+  .card-value.red{color:#dc2626}
+  .card-value.green{color:#16a34a}
+  .card-value.blue{color:#1d4ed8}
+  .card-value.orange{color:#ea580c}
+  .table-wrap{background:#fff;border:1px solid #fcd9b6;border-radius:12px;overflow:hidden;margin-bottom:24px;box-shadow:0 1px 4px rgba(232,93,4,.06)}
+  .table-head{padding:16px 20px;border-bottom:1px solid #fde8d0;display:flex;align-items:center;justify-content:space-between;background:#fff8f3}
+  .table-head h2{font-size:14px;font-weight:600;color:#7c2d12}
   table{width:100%;border-collapse:collapse}
-  th{padding:12px 16px;text-align:left;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #2d3748;background:#161b27}
-  td{padding:11px 16px;font-size:13px;border-bottom:1px solid #1a2035;vertical-align:top}
+  th{padding:12px 16px;text-align:left;font-size:11px;font-weight:600;color:#9a6a4e;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #fde8d0;background:#fff8f3}
+  td{padding:11px 16px;font-size:13px;border-bottom:1px solid #fef3ea;vertical-align:top;color:#2d2d2d}
   tr:last-child td{border-bottom:none}
-  tr:hover td{background:#222840}
+  tr:hover td{background:#fff8f3}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
-  .badge-red{background:#3f1515;color:#f87171;border:1px solid #7f1d1d}
-  .badge-green{background:#14301f;color:#4ade80;border:1px solid #166534}
-  .badge-blue{background:#172554;color:#93c5fd;border:1px solid #1e40af}
-  .badge-gray{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+  .badge-red{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5}
+  .badge-green{background:#f0fdf4;color:#16a34a;border:1px solid #86efac}
+  .badge-orange{background:#fff7ed;color:#ea580c;border:1px solid #fdba74}
+  .badge-gray{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0}
   .num{font-variant-numeric:tabular-nums;font-weight:600}
-  .num-big{font-size:15px;color:#f87171;font-weight:700}
+  .num-big{font-size:15px;color:#dc2626;font-weight:700}
   .select-bar{display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap}
-  select,input{background:#1e2330;border:1px solid #2d3748;color:#e2e8f0;padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit}
-  select:focus,input:focus{outline:none;border-color:#3b82f6}
-  button{background:#2563eb;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s}
-  button:hover{background:#1d4ed8}
-  .empty{padding:40px;text-align:center;color:#475569;font-size:13px}
-  .kec-link{color:#60a5fa;font-weight:600}
-  .progress-bar{height:6px;background:#1a2035;border-radius:3px;margin-top:6px;overflow:hidden}
-  .progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#f87171,#fbbf24);transition:.3s}
-  .tag-ind{font-size:11px;color:#94a3b8}
+  select,input{background:#fff;border:1px solid #fcd9b6;color:#1a1a2e;padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit}
+  select:focus,input:focus{outline:none;border-color:#f48c06;box-shadow:0 0 0 3px rgba(244,140,6,.15)}
+  button{background:#e85d04;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s}
+  button:hover{background:#c2440e}
+  .empty{padding:40px;text-align:center;color:#9a6a4e;font-size:13px}
+  .kec-link{color:#c2440e;font-weight:600}
+  .progress-bar{height:6px;background:#fde8d0;border-radius:3px;margin-top:6px;overflow:hidden}
+  .progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#f97316,#fbbf24);transition:.3s}
+  .tag-ind{font-size:11px;color:#9a6a4e}
   .date-sel{display:flex;gap:8px;align-items:center}
-  .date-sel label{font-size:12px;color:#64748b}
+  .date-sel label{font-size:12px;color:#9a6a4e}
+  .hero-strip{background:linear-gradient(135deg,#fff7ed,#fef3ea);border:1px solid #fcd9b6;border-radius:12px;padding:20px 24px;margin-bottom:28px}
+  .hero-title{font-size:18px;font-weight:700;color:#7c2d12}
+  .hero-sub{font-size:12px;color:#9a6a4e;margin-top:2px}
 </style>
 """
+
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -205,7 +209,7 @@ def home():
         </div>
         <div class="card">
           <div class="card-label">Kasus Mikro Tersimpan</div>
-          <div class="card-value yellow">{total_kasus:,}</div>
+          <div class="card-value orange">{total_kasus:,}</div>
         </div>
       </div>
 
