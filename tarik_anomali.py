@@ -335,7 +335,7 @@ def upsert_mikro(connection, engine_type, current_date, data_list):
         return 0
 
 def delay():
-    time.sleep(random.uniform(2, 4))
+    time.sleep(random.uniform(0.3, 0.8))
 
 def main():
     config = load_config()

@@ -380,58 +380,176 @@ def sls_view():
     if not tanggal_list:
         return f"{nav('sls')}<div class='container'><div class='empty'>Belum ada data.</div></div>"
     
-    tgl = request.args.get('tgl', tanggal_list[0])
+    tgl     = request.args.get('tgl', tanggal_list[0])
+    kec_filter  = request.args.get('kec', '')
+    desa_filter = request.args.get('desa', '')
+    ind_filter  = request.args.get('ind', '')
     level_filter = request.args.get('level', 'sub_sls')
     db = get_db()
 
-    rows = db.execute("""
-        SELECT id_wilayah, nama_wilayah, level_wilayah, kode_indikator, total_value
+    # Daftar kecamatan (prefix 10 digit id kecamatan)
+    kec_list = db.execute("""
+        SELECT DISTINCT nama_kecamatan, SUBSTR(id_wilayah,1,10) as kec_id
+        FROM agregat_anomali
+        WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND total_value > 0
+        ORDER BY nama_kecamatan
+    """, (tgl,)).fetchall()
+
+    # Daftar desa (filter by kecamatan jika dipilih)
+    desa_query_params = [tgl]
+    desa_query = """
+        SELECT DISTINCT nama_desa, SUBSTR(id_wilayah,1,13) as desa_id
+        FROM agregat_anomali
+        WHERE tanggal_tarik=? AND level_wilayah='desa' AND total_value > 0
+    """
+    if kec_filter:
+        desa_query += " AND SUBSTR(id_wilayah,1,10)=?"
+        desa_query_params.append(kec_filter)
+    desa_query += " ORDER BY nama_desa"
+    desa_list = db.execute(desa_query, desa_query_params).fetchall()
+
+    # Build query for SLS/sub-SLS
+    params = [tgl, level_filter]
+    where_extra = ""
+    if desa_filter:
+        where_extra += " AND SUBSTR(id_wilayah,1,13)=?"
+        params.append(desa_filter)
+    elif kec_filter:
+        where_extra += " AND SUBSTR(id_wilayah,1,10)=?"
+        params.append(kec_filter)
+    if ind_filter:
+        where_extra += " AND kode_indikator=?"
+        params.append(ind_filter)
+
+    rows = db.execute(f"""
+        SELECT id_wilayah, nama_wilayah, nama_desa, nama_kecamatan, level_wilayah, kode_indikator, total_value
         FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah=? AND total_value > 0
+        {where_extra}
         ORDER BY total_value DESC
-        LIMIT 200
-    """, (tgl, level_filter)).fetchall()
+        LIMIT 300
+    """, params).fetchall()
+
+    # Hitung total
+    total_kasus = sum(r['total_value'] for r in rows)
+    total_wilayah = len(set(r['id_wilayah'] for r in rows))
 
     tgl_options = "".join([f"<option value='{t}' {'selected' if t==tgl else ''}>{t}</option>" for t in tanggal_list])
     level_options = "".join([
-        f"<option value='{lv}' {'selected' if lv==level_filter else ''}>{lv.upper()}</option>"
-        for lv in ['sls', 'sub_sls', 'desa', 'kecamatan']
+        f"<option value='{lv}' {'selected' if lv==level_filter else ''}>{lv.replace('_',' ').title()}</option>"
+        for lv in ['sub_sls', 'sls', 'desa', 'kecamatan']
+    ])
+    kec_options = "<option value=''>-- Semua Kecamatan --</option>" + "".join([
+        f"<option value='{r['kec_id']}' {'selected' if r['kec_id']==kec_filter else ''}>{r['nama_kecamatan']}</option>"
+        for r in kec_list
+    ])
+    desa_options = "<option value=''>-- Semua Desa --</option>" + "".join([
+        f"<option value='{r['desa_id']}' {'selected' if r['desa_id']==desa_filter else ''}>{r['nama_desa'] or r['desa_id']}</option>"
+        for r in desa_list
+    ])
+    ind_options = "<option value=''>-- Semua Indikator --</option>" + "".join([
+        f"<option value='{k}' {'selected' if k==ind_filter else ''}>{v}</option>"
+        for k, v in NAMA_INDIKATOR.items() if k in BELUM
     ])
 
     table_rows = ""
     for r in rows:
         kode = str(r['kode_indikator'])
-        cls = 'badge-red' if kode in BELUM else 'badge-green'
+        cls_badge = 'badge-red' if kode in BELUM else 'badge-green'
+        cls_num = 'color:#dc2626' if kode in BELUM else 'color:#16a34a'
+        lokasi = []
+        if r['nama_kecamatan']: lokasi.append(r['nama_kecamatan'])
+        if r['nama_desa']:       lokasi.append(r['nama_desa'])
+        lokasi_str = " › ".join(lokasi) if lokasi else ""
         table_rows += f"""
         <tr>
-          <td><code style="font-size:12px;color:#94a3b8">{r['id_wilayah']}</code></td>
-          <td>{r['nama_wilayah'] or '-'}</td>
-          <td><span class="badge badge-gray">{r['level_wilayah']}</span></td>
-          <td><span class="badge {cls}">{NAMA_INDIKATOR.get(kode, kode)}</span></td>
-          <td class="num" style="{'color:#f87171' if kode in BELUM else 'color:#4ade80'}">{r['total_value']:,}</td>
+          <td>
+            <div style="font-family:monospace;font-size:12px;color:#78350f;font-weight:600">{r['id_wilayah']}</div>
+            <div style="font-size:12px;font-weight:600;color:#1a1a2e;margin-top:2px">{r['nama_wilayah'] or '-'}</div>
+            {"<div style='font-size:11px;color:#9a6a4e;margin-top:1px'>"+lokasi_str+"</div>" if lokasi_str else ""}
+          </td>
+          <td><span class="badge {cls_badge}" style="white-space:nowrap">{NAMA_INDIKATOR.get(kode, kode)}</span></td>
+          <td style="text-align:right"><span class="num" style="{cls_num};font-size:15px">{r['total_value']:,}</span></td>
         </tr>"""
 
+    # Info filter aktif
+    filter_info = []
+    if kec_filter:
+        kec_nama = next((r['nama_kecamatan'] for r in kec_list if r['kec_id']==kec_filter), kec_filter)
+        filter_info.append(f"Kec. <strong>{kec_nama}</strong>")
+    if desa_filter:
+        desa_nama = next((r['nama_desa'] for r in desa_list if r['desa_id']==desa_filter), desa_filter)
+        filter_info.append(f"Desa <strong>{desa_nama}</strong>")
+    if ind_filter:
+        filter_info.append(f"<strong>{NAMA_INDIKATOR.get(ind_filter, ind_filter)}</strong>")
+    filter_label = " · ".join(filter_info) if filter_info else "Semua wilayah"
+
     return render_template_string(f"""<!DOCTYPE html><html>
-    <head><title>SLS - Anomali SE2026</title>{BASE_STYLE}</head>
+    <head><title>SLS - Anomali SE2026</title>{BASE_STYLE}
+    <style>
+      .filter-box{{background:#fff8f3;border:1px solid #fde8d0;border-radius:10px;padding:16px 20px;margin-bottom:20px}}
+      .filter-row{{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}}
+      .filter-group{{display:flex;flex-direction:column;gap:4px}}
+      .filter-group label{{font-size:11px;color:#9a6a4e;font-weight:600;text-transform:uppercase;letter-spacing:.4px}}
+      .stat-row{{display:flex;gap:16px;margin-bottom:20px}}
+      .stat-item{{background:#fff;border:1px solid #fcd9b6;border-radius:8px;padding:12px 18px;font-size:13px}}
+      .stat-item span{{display:block;font-size:11px;color:#9a6a4e;margin-bottom:2px}}
+      .stat-item strong{{font-size:18px;font-weight:700;color:#7c2d12}}
+    </style>
+    </head>
     <body>
     {nav('sls')}
     <div class="container">
-      <h1>Data per SLS / Sub-SLS</h1>
-      <div class="subtitle">Menampilkan maks 200 baris teratas &middot; Data per {tgl}</div>
-      <form method="get" class="select-bar">
-        <select name="tgl" onchange="this.form.submit()">{tgl_options}</select>
-        <select name="level">{level_options}</select>
-        <button type="submit">Tampilkan</button>
-      </form>
+      <h1>Data SLS / Sub-SLS Beranoali</h1>
+      <div class="subtitle">{filter_label} &middot; Data per {tgl}</div>
+
+      <div class="filter-box">
+        <form method="get" class="filter-row" id="filter-form">
+          <input type="hidden" name="tgl" value="{tgl}">
+          <div class="filter-group">
+            <label>Level</label>
+            <select name="level">{level_options}</select>
+          </div>
+          <div class="filter-group">
+            <label>Kecamatan</label>
+            <select name="kec" onchange="document.getElementById('desa-sel').value=''; this.form.submit()">
+              {kec_options}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Desa</label>
+            <select name="desa" id="desa-sel">{desa_options}</select>
+          </div>
+          <div class="filter-group">
+            <label>Jenis Anomali</label>
+            <select name="ind">{ind_options}</select>
+          </div>
+          <div class="filter-group" style="justify-content:flex-end">
+            <label>&nbsp;</label>
+            <div style="display:flex;gap:8px">
+              <button type="submit">Tampilkan</button>
+              <a href="/sls?tgl={tgl}"><button type="button" style="background:#e5e7eb;color:#374151">Reset</button></a>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-item"><span>Wilayah ditemukan</span><strong>{total_wilayah}</strong></div>
+        <div class="stat-item"><span>Total kasus</span><strong style="color:#dc2626">{total_kasus:,}</strong></div>
+        <div class="stat-item"><span>Baris ditampilkan</span><strong>{len(rows)}</strong></div>
+      </div>
+
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Kode Wilayah</th><th>Nama</th><th>Level</th><th>Jenis Anomali</th><th>Jumlah</th>
+            <th>Wilayah</th><th>Jenis Anomali</th><th style="text-align:right">Jumlah</th>
           </tr></thead>
-          <tbody>{table_rows or "<tr><td colspan='5' class='empty'>Tidak ada data</td></tr>"}</tbody>
+          <tbody>{table_rows or "<tr><td colspan='3' class='empty'>Tidak ada data untuk filter ini</td></tr>"}</tbody>
         </table>
       </div>
     </div></body></html>""")
+
 
 # ─────────────────────────────────────────
 # PER INDIKATOR
