@@ -159,7 +159,13 @@ def open_browser_and_login():
     
     return driver
 
+# Counter error HTML berturut-turut (login expired detection)
+_html_error_count = 0
+_HTML_ERROR_THRESHOLD = 3
+
+
 def fetch_api_get(driver, url, max_retries=3):
+    global _html_error_count
     js_script = """
     var callback = arguments[arguments.length - 1];
     var url = arguments[0];
@@ -194,7 +200,19 @@ def fetch_api_get(driver, url, max_retries=3):
             body = result.get("body", "")
             
             if "<!DOCTYPE" in body or "<html>" in body.lower():
-                print("\n    [!] Halaman HTML terdeteksi (mungkin login expired atau Cloudflare).")
+                _html_error_count += 1
+                print(f"\n    [!] Halaman HTML terdeteksi - kemungkinan LOGIN EXPIRED [{_html_error_count}/{_HTML_ERROR_THRESHOLD}]")
+                
+                if _html_error_count >= _HTML_ERROR_THRESHOLD:
+                    print("\n" + "!"*60)
+                    print("  SESSION EXPIRED!")
+                    print("  Silakan login ulang di browser Chrome yang terbuka,")
+                    print("  pastikan sudah masuk ke halaman dashboard,")
+                    print("  lalu kembali ke sini dan tekan ENTER untuk melanjutkan.")
+                    print("!"*60)
+                    input("\n>>> Tekan ENTER setelah login ulang... ")
+                    _html_error_count = 0  # reset counter
+                    continue  # coba ulang request yang sama
                 return None
                 
             if status >= 500:
@@ -203,13 +221,16 @@ def fetch_api_get(driver, url, max_retries=3):
             if status != 200:
                 print(f"    [!] HTTP {status}")
                 return None
-                
+            
+            # Sukses - reset counter HTML error
+            _html_error_count = 0
             return json.loads(body)
             
         except Exception as e:
             time.sleep(attempt * 3)
             
     return None
+
 
 def fetch_with_cache(driver, url, cache, date_str):
     """Fetch dengan cache harian. Kalau URL sudah ada di cache, langsung return tanpa delay."""
