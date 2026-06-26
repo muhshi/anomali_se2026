@@ -389,23 +389,23 @@ def sls_view():
 
     # Daftar kecamatan (prefix 10 digit id kecamatan)
     kec_list = db.execute("""
-        SELECT DISTINCT nama_kecamatan, SUBSTR(id_wilayah,1,10) as kec_id
+        SELECT DISTINCT nama_wilayah as nama_kecamatan, SUBSTR(id_wilayah,1,10) as kec_id
         FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah='kecamatan' AND total_value > 0
-        ORDER BY nama_kecamatan
+        ORDER BY nama_wilayah
     """, (tgl,)).fetchall()
 
     # Daftar desa (filter by kecamatan jika dipilih)
     desa_query_params = [tgl]
     desa_query = """
-        SELECT DISTINCT nama_desa, SUBSTR(id_wilayah,1,13) as desa_id
+        SELECT DISTINCT nama_wilayah as nama_desa, SUBSTR(id_wilayah,1,13) as desa_id
         FROM agregat_anomali
         WHERE tanggal_tarik=? AND level_wilayah='desa' AND total_value > 0
     """
     if kec_filter:
         desa_query += " AND SUBSTR(id_wilayah,1,10)=?"
         desa_query_params.append(kec_filter)
-    desa_query += " ORDER BY nama_desa"
+    desa_query += " ORDER BY nama_wilayah"
     desa_list = db.execute(desa_query, desa_query_params).fetchall()
 
     # Build query for SLS/sub-SLS
@@ -422,8 +422,11 @@ def sls_view():
         params.append(ind_filter)
 
     rows = db.execute(f"""
-        SELECT id_wilayah, nama_wilayah, nama_desa, nama_kecamatan, level_wilayah, kode_indikator, total_value
-        FROM agregat_anomali
+        SELECT 
+            id_wilayah, nama_wilayah, level_wilayah, kode_indikator, total_value,
+            (SELECT nama_wilayah FROM agregat_anomali WHERE id_wilayah = SUBSTR(a.id_wilayah,1,13) AND level_wilayah='desa' LIMIT 1) as nama_desa,
+            (SELECT nama_wilayah FROM agregat_anomali WHERE id_wilayah = SUBSTR(a.id_wilayah,1,10) AND level_wilayah='kecamatan' LIMIT 1) as nama_kecamatan
+        FROM agregat_anomali a
         WHERE tanggal_tarik=? AND level_wilayah=? AND total_value > 0
         {where_extra}
         ORDER BY total_value DESC
