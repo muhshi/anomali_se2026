@@ -7,6 +7,27 @@ import undetected_chromedriver as uc
 from selenium.webdriver.chrome.options import Options
 
 # ========================================
+# Cache Harian (resume-friendly)
+# ========================================
+
+def get_cache_path(date_str):
+    return f"cache_{date_str}.json"
+
+def load_cache(date_str):
+    cache_path = get_cache_path(date_str)
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        print(f"[i] Cache ditemukan: {len(data)} URL tersimpan dari sesi sebelumnya.")
+        return data
+    return {}
+
+def save_cache(date_str, cache):
+    cache_path = get_cache_path(date_str)
+    with open(cache_path, 'w', encoding='utf-8') as f:
+        json.dump(cache, f, ensure_ascii=False)
+
+# ========================================
 # Penarikan Data Anomali SE2026
 # ========================================
 
@@ -190,6 +211,17 @@ def fetch_api_get(driver, url, max_retries=3):
             
     return None
 
+def fetch_with_cache(driver, url, cache, date_str):
+    """Fetch dengan cache harian. Kalau URL sudah ada di cache, langsung return tanpa delay."""
+    if url in cache:
+        return cache[url]  # Hit cache, skip API call
+    
+    result = fetch_api_get(driver, url)
+    if result is not None:
+        cache[url] = result
+        save_cache(date_str, cache)  # Simpan setelah setiap fetch berhasil
+    return result
+
 def upsert_agregat(connection, engine_type, current_date, data_list):
     if not data_list: return 0
     rows = []
@@ -301,11 +333,14 @@ def main():
     print(f"\nMulai menarik data anomali untuk tanggal: {current_date}")
     print("-" * 50)
     
+    # Load cache harian untuk resume
+    cache = load_cache(current_date)
+    
     try:
         # LEVEL KECAMATAN
         print("[*] Fetch Level Kecamatan...")
         url_kec = f"{base_url}?level=kecamatan&jenis=kualitas&indikator={indikator_list}&kabupaten={kabupaten_code}"
-        data_kec = fetch_api_get(driver, url_kec)
+        data_kec = fetch_with_cache(driver, url_kec, cache, current_date)
         
         if not data_kec:
             print("Gagal fetch kecamatan.")
@@ -317,13 +352,14 @@ def main():
         kec_ids = set([d["id_wilayah"] for d in data_kec if d.get("total_value") and int(d.get("total_value", 0)) > 0])
         print(f"  [i] {len(kec_ids)} kecamatan punya anomali (dari {len(set(d['id_wilayah'] for d in data_kec))} total)")
         
-        for kec in kec_ids:
+        for kec in sorted(kec_ids):  # sorted untuk urutan konsisten saat resume
             if not kec or len(kec) < 7: continue
             
-            print(f"  [-] Fetch Desa di Kecamatan {kec}")
-            delay()
             url_desa = f"{base_url}?level=desa&jenis=kualitas&indikator={indikator_list}&kecamatan={kec[:7]}"
-            data_desa = fetch_api_get(driver, url_desa)
+            cached_desa = url_desa in cache
+            print(f"  [-] Fetch Desa di Kecamatan {kec}{' [cache]' if cached_desa else ''}")
+            if not cached_desa: delay()
+            data_desa = fetch_with_cache(driver, url_desa, cache, current_date)
             
             if data_desa:
                 upsert_agregat(connection, engine_type, current_date, data_desa)
@@ -331,12 +367,13 @@ def main():
                 desa_ids = set([d["id_wilayah"] for d in data_desa if d.get("total_value") and int(d.get("total_value", 0)) > 0])
                 print(f"    [i] {len(desa_ids)} desa punya anomali di kecamatan {kec[:7]}")
                 
-                for desa in desa_ids:
+                for desa in sorted(desa_ids):
                     if not desa or len(desa) < 10: continue
-                    print(f"    [-] Fetch SLS di Desa {desa}")
-                    delay()
                     url_sls = f"{base_url}?level=sls&jenis=kualitas&indikator={indikator_list}&desa={desa[:10]}"
-                    data_sls = fetch_api_get(driver, url_sls)
+                    cached_sls = url_sls in cache
+                    print(f"    [-] Fetch SLS di Desa {desa}{' [cache]' if cached_sls else ''}")
+                    if not cached_sls: delay()
+                    data_sls = fetch_with_cache(driver, url_sls, cache, current_date)
                     
                     if data_sls:
                         upsert_agregat(connection, engine_type, current_date, data_sls)
@@ -344,12 +381,13 @@ def main():
                         sls_ids = set([d["id_wilayah"] for d in data_sls if d.get("total_value") and int(d.get("total_value", 0)) > 0])
                         print(f"      [i] {len(sls_ids)} SLS punya anomali di desa {desa[:10]}")
                         
-                        for sls in sls_ids:
+                        for sls in sorted(sls_ids):
                             if not sls or len(sls) < 14: continue
-                            print(f"      [-] Fetch Sub-SLS di SLS {sls}")
-                            delay()
                             url_subsls = f"{base_url}?level=sub_sls&jenis=kualitas&indikator={indikator_list}&sls={sls[:14]}"
-                            data_subsls = fetch_api_get(driver, url_subsls)
+                            cached_subsls = url_subsls in cache
+                            print(f"      [-] Fetch Sub-SLS di SLS {sls}{' [cache]' if cached_subsls else ''}")
+                            if not cached_subsls: delay()
+                            data_subsls = fetch_with_cache(driver, url_subsls, cache, current_date)
                             
                             if data_subsls:
                                 upsert_agregat(connection, engine_type, current_date, data_subsls)
@@ -362,9 +400,6 @@ def main():
                                         subsls_code = item["id_wilayah"]
                                         ind = item["kode_indikator"]
                                         
-                                        print(f"        [>] Fetch Kasus Anomali di Sub-SLS {subsls_code} untuk Indikator {ind}")
-                                        delay()
-                                        
                                         url_mikro = f"{mikro_url}?kode_wilayah={subsls_code}&indikator={ind}"
                                         
                                         # Pasangan indikator (belum ditindaklanjuti dgn sudah ditindaklanjuti)
@@ -375,21 +410,28 @@ def main():
                                         }
                                         if ind in pasangan:
                                             url_mikro += f"&sudah_indikator={pasangan[ind]}"
+                                        
+                                        cached_mikro = url_mikro in cache
+                                        print(f"        [>] Fetch Kasus Anomali di Sub-SLS {subsls_code} Indikator {ind}{' [cache]' if cached_mikro else ''}")
+                                        if not cached_mikro: delay()
                                             
-                                        data_kasus = fetch_api_get(driver, url_mikro)
+                                        data_kasus = fetch_with_cache(driver, url_mikro, cache, current_date)
                                         if data_kasus:
                                             inserted = upsert_mikro(connection, engine_type, current_date, data_kasus)
                                             print(f"            + Disimpan {inserted} kasus mikro.")
                                             
     except Exception as e:
+        import traceback
         print(f"Error utama: {e}")
+        traceback.print_exc()
     finally:
         if 'connection' in locals():
             try:
                 connection.close()
             except:
                 pass
-        print("Selesai. Browser tetap terbuka.")
+        print(f"\nSelesai. Cache tersimpan di: {get_cache_path(current_date)}")
+        print("Browser tetap terbuka.")
 
 if __name__ == "__main__":
     main()
