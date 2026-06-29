@@ -16,7 +16,7 @@ DB_FILE = 'anomali_se2026.db'
 
 def load_config():
     if os.path.exists('config.json'):
-        with open('config.json', 'r') as f:
+        with open('config.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     return {}
 

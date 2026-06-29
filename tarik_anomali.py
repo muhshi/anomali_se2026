@@ -37,7 +37,7 @@ def load_config():
     if not os.path.exists(config_path):
         print(f"Error: {config_path} tidak ditemukan!")
         exit(1)
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 def init_db(config):

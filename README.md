@@ -72,3 +72,5 @@ chmod +x run.sh
 - **2026-06-26**: Perbaikan silent error (HTTP 500) pada API BPS dengan menyisipkan parameter `type` dan `anomali_no` secara otomatis berdasarkan jenis indikator.
 - **2026-06-26**: Dinamisasi konfigurasi — daftar indikator dipindahkan dari hardcode Python ke `config.json` agar mudah ditambah jika pusat mengeluarkan indikator baru.
 - **2026-06-26**: Menambahkan `run.bat` dan `run.sh` untuk mempermudah eksekusi script.
+- **2026-06-29**: Perbaikan `UnicodeDecodeError` saat memuat `config.json` di Windows dengan menambahkan `encoding='utf-8'` secara eksplisit.
+
