@@ -7,7 +7,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 1. **Siapkan File Excel:**
    Pastikan Anda memiliki file Excel yang berisi link anomali (bot akan membaca kolom `R`). Anda tidak perlu memfilter kode kecamatan, bot akan memproses semua link yang ada di file Excel tersebut.
 2. **Masukkan ke Folder Data:**
-   Buka folder proyek ini, lalu masukkan file Excel tersebut ke dalam folder bernama `data`. *(Jika foldernya belum ada, jalankan `run.bat` sekali dan ia akan membuat foldernya secara otomatis).*
+   Buka folder proyek ini, lalu masukkan file Excel tersebut ke dalam folder `data` yang sudah tersedia.
 3. **Jalankan Bot:**
    Klik dua kali (Double-click) pada file **`run.bat`**.
    - Jika komputer Anda belum memiliki Python, bot akan mendownload dan menginstallnya secara otomatis (tunggu 1-2 menit lalu jalankan ulang).
@@ -34,3 +34,8 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
  ┣ 📜 processed_links.json     <-- File log riwayat link yang sudah sukses
  ┗ 📜 README.md
 ```
+
+## 📝 Changelog
+
+### 2026-07-24
+- Menyediakan folder `data/` secara langsung dalam repositori agar pengguna bisa langsung menaruh file Excel data.
