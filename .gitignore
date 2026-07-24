@@ -10,7 +10,8 @@ chrome_profile_anomali/
 processed_links.json
 
 # Data files
-data/*.xlsx
+data/*
+!data/.gitkeep
 *.xlsx
 *.csv
 
