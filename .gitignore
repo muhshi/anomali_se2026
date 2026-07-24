@@ -14,6 +14,9 @@ data/*.xlsx
 *.xlsx
 *.csv
 
+# Personal/Temp files
+coba.py
+
 # Python
 __pycache__/
 *.py[cod]
