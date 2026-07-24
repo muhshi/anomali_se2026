@@ -1,79 +1,125 @@
 @echo off
 setlocal enabledelayedexpansion
 
+title Bot Otomatisasi Reject Anomali Fasih-SM BPS
+
 echo ====================================================
 echo   AUTO-INSTALLER ^& RUNNER - BPS FASIH ANOMALI BOT
 echo ====================================================
+echo.
 
-:: Buat folder data jika belum ada
+:: 1. Buat folder data jika belum ada
 if not exist "data\" (
     mkdir "data"
-    echo.
-    echo Folder 'data' telah dibuat!
-    echo Silakan masukkan file Excel .xlsx ke dalam folder 'data' lalu jalankan lagi file ini.
-    echo.
-    pause
-    exit /b
+    echo [Info] Folder 'data' telah dibuat!
 )
 
-:: Cek apakah file excel ada di folder data
+:: 2. Cek ketersediaan file Excel
+set count=0
+for %%x in (data\*.xlsx) do set /a count+=1
+if %count%==0 (
+    echo [Peringatan] TIDAK ADA FILE EXCEL DITEMUKAN di folder 'data'!
+    echo Silakan masukkan file Excel anomali (.xlsx) ke dalam folder 'data'.
+    echo.
+    echo Tekan sembarang tombol setelah Anda menaruh file Excel di folder 'data'...
+    pause >nul
+)
+
+:: Re-check file Excel setelah pause
 set count=0
 for %%x in (data\*.xlsx) do set /a count+=1
 if %count%==0 (
     echo.
-    echo TIDAK ADA FILE EXCEL DITEMUKAN!
-    echo Silakan masukkan file Excel anomali .xlsx ke dalam folder 'data' lalu jalankan ulang.
-    echo.
-    pause
-    exit /b
+    echo Masih belum ada file Excel di folder 'data'. Silakan jalankan ulang run.bat setelah file disiapkan.
+    goto FINISH
 )
 
-:: Cek apakah Python terinstall
+:: 3. Cek Python
+set "PYTHON_EXE="
+
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo Python belum terinstall atau belum masuk PATH!
-    echo Mendownload installer Python 3.11...
-    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.8/python-3.11.8-amd64.exe' -OutFile 'python_installer.exe'"
-    if exist python_installer.exe (
-        echo Menginstall Python... Mohon tunggu, proses ini memakan waktu 1-2 menit.
-        start /wait python_installer.exe /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_doc=0
-        echo Instalasi selesai. 
-        echo Mohon TUTUP JENDELA INI dan JALANKAN ULANG run.bat agar Windows mengenali Python.
-        pause
-        exit /b
+if %errorlevel% equ 0 (
+    set "PYTHON_EXE=python"
+) else (
+    py --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        set "PYTHON_EXE=py"
     ) else (
-        echo Gagal mendownload Python. Silakan install Python dari python.org secara manual.
-        pause
-        exit /b
+        if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+            set "PYTHON_EXE=%LocalAppData%\Programs\Python\Python311\python.exe"
+            set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
+        ) else if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+            set "PYTHON_EXE=%LocalAppData%\Programs\Python\Python312\python.exe"
+            set "PATH=%LocalAppData%\Programs\Python\Python312;%LocalAppData%\Programs\Python\Python312\Scripts;!PATH!"
+        )
     )
 )
 
-echo Python terdeteksi.
-
-:: Cek Virtual Environment
-if not exist "venv\Scripts\activate.bat" (
+if "%PYTHON_EXE%"=="" (
     echo.
-    echo Membuat Virtual Environment (venv) agar tidak bentrok dengan program lain...
-    python -m venv venv
+    echo [Info] Python belum terinstall di komputer ini.
+    echo Mendownload installer Python 3.11...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.8/python-3.11.8-amd64.exe' -OutFile 'python_installer.exe'"
+    
+    if exist python_installer.exe (
+        echo Menginstall Python... Mohon tunggu 1-2 menit.
+        start /wait python_installer.exe /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_doc=0
+        del python_installer.exe >nul 2>&1
+        
+        if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+            set "PYTHON_EXE=%LocalAppData%\Programs\Python\Python311\python.exe"
+            set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
+            echo [Sukses] Instalasi Python selesai dan berhasil dikonfigurasi!
+        ) else (
+            python --version >nul 2>&1
+            if %errorlevel% equ 0 (
+                set "PYTHON_EXE=python"
+                echo [Sukses] Instalasi Python selesai!
+            )
+        )
+    )
+    
+    if "%PYTHON_EXE%"=="" (
+        echo.
+        echo [ERROR] Gagal mendownload/menginstall Python secara otomatis.
+        echo Silakan install Python dari https://www.python.org/downloads/ secara manual.
+        goto FINISH
+    )
 )
 
-echo.
+echo [Info] Menggunakan Python: %PYTHON_EXE%
+
+:: 4. Virtual Environment Setup
+if not exist "venv\Scripts\activate.bat" (
+    echo.
+    echo Membuat Virtual Environment (venv)...
+    "%PYTHON_EXE%" -m venv venv
+)
+
 echo Mengaktifkan Virtual Environment...
 call venv\Scripts\activate.bat
 
-echo Memeriksa dan menginstall library yang dibutuhkan (Pandas, Openpyxl, Playwright)...
-python -m pip install --upgrade pip >nul 2>&1
-pip install pandas openpyxl playwright >nul 2>&1
+echo.
+echo Memeriksa dan menginstall dependensi (Pandas, Openpyxl, Playwright)...
+python -m pip install --upgrade pip
+pip install pandas openpyxl playwright
 
-echo Mendownload engine browser Playwright (Chromium) jika belum ada...
-playwright install chromium >nul 2>&1
+echo.
+echo Mendownload browser Playwright (Chromium)...
+playwright install chromium
 
 echo.
 echo ====================================================
-echo Menjalankan Script Otomatisasi...
+echo Menjalankan Bot Otomatisasi Reject Anomali...
 echo ====================================================
+echo.
 python reject_anomali.py
 
+:FINISH
 echo.
-pause
+echo ====================================================
+echo Program selesai atau dihentikan.
+echo Tekan sembarang tombol untuk menutup jendela ini...
+echo ====================================================
+pause >nul
+

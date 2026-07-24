@@ -18,6 +18,87 @@ def save_cache(cache_set):
     with open(CACHE_FILE, "w") as f:
         json.dump(list(cache_set), f, indent=4)
 
+def check_is_bot_or_blocked(page):
+    """Mengecek apakah halaman saat ini menunjukkan pesan terdeteksi bot, WAF, atau error SSO."""
+    try:
+        if page.locator("text=/mendeteksi koneksi anda sebagai bot/i").count() > 0:
+            return True
+        if page.locator("text=/HaloSIS/i").count() > 0:
+            return True
+        if page.locator("text=/Lanjutkan dengan SSO/i").count() > 0:
+            return True
+        if page.locator("text=/Access Denied/i").count() > 0:
+            return True
+        url = page.url.lower()
+        if "sso" in url and ("error" in url or "login" in url or "block" in url):
+            return True
+    except:
+        pass
+    return False
+
+def resolve_bot_detection(page, target_link):
+    """
+    Penanganan terdeteksi bot (WAF/SSO) sesuai instruksi:
+    1. Tunggu beberapa saat (5 detik)
+    2. Refresh/reload halaman
+    3. Cek & klik tombol 'Lanjutkan dengan SSO' jika ada
+    4. Ulangi otomatis 3 kali sebelum minta intervensi manual.
+    """
+    if not check_is_bot_or_blocked(page):
+        return True
+
+    print("="*60)
+    print(" [WAF / BOT DETECTED] Halaman terdeteksi bot atau terganggu sesi SSO.")
+    print(" Memulai prosedur pemulihan otomatis...")
+    
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        print(f" -> [Percobaan {attempt}/{max_retries}] Menunggu 5 detik...")
+        time.sleep(5)
+        
+        print(" -> Refresh/reload halaman...")
+        try:
+            page.reload(wait_until="networkidle", timeout=15000)
+        except Exception:
+            try:
+                page.goto(target_link, wait_until="networkidle", timeout=15000)
+            except Exception:
+                pass
+        time.sleep(3)
+        
+        # Cari dan klik tombol 'Lanjutkan dengan SSO' jika ada
+        try:
+            sso_btn = page.locator("button, a, div").filter(
+                has_text=re.compile(r"Lanjutkan dengan SSO|Lanjutkan SSO|Login.*SSO|Masuk.*SSO|Lanjutkan", re.IGNORECASE)
+            )
+            if sso_btn.count() > 0 and sso_btn.first.is_visible():
+                print(" -> Mengklik tombol 'Lanjutkan dengan SSO'...")
+                sso_btn.first.click()
+                time.sleep(4)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f" -> Cek tombol SSO info: {e}")
+
+        if not check_is_bot_or_blocked(page):
+            print(" -> [BERHASIL] Halaman terbebas dari deteksi bot! Melanjutkan bot...")
+            print("="*60)
+            return True
+
+    print("="*60)
+    print(" TERDETEKSI SEBAGAI BOT OLEH SERVER (WAF BPS)!")
+    print(" Pemulihan otomatis belum berhasil. Silakan selesaikan di browser.")
+    print(" Tekan ENTER di terminal ini jika halaman sudah kembali normal.")
+    print("="*60)
+    input("Tekan ENTER untuk melanjutkan bot...")
+    try:
+        page.goto(target_link, wait_until="networkidle", timeout=15000)
+    except Exception:
+        pass
+    return True
+
 def main():
     data_dir = os.path.join(os.getcwd(), "data")
     
@@ -130,15 +211,8 @@ def main():
                     else:
                         raise e
                 
-                # Cek apakah terkena blokir bot (WAF)
-                if page.locator("text=/mendeteksi koneksi anda sebagai bot/i").count() > 0 or page.locator("text=/HaloSIS/i").count() > 0:
-                    print("="*60)
-                    print(" TERDETEKSI SEBAGAI BOT OLEH SERVER (WAF BPS)!")
-                    print(" Ini biasanya karena kita membuka terlalu banyak halaman dalam waktu singkat.")
-                    print(" Silakan selesaikan tantangan/tunggu di browser, lalu tekan ENTER di sini untuk lanjut.")
-                    print("="*60)
-                    input("Tekan ENTER jika sudah lepas dari halaman blokir bot...")
-                    page.goto(link, wait_until="networkidle")
+                # Cek dan tangani jika terkena blokir bot (WAF/SSO)
+                resolve_bot_detection(page, link)
                 
                 # 1. Masuk ke menu catatan
                 try:
@@ -231,6 +305,7 @@ def main():
                         raise e
                         
                 time.sleep(2)
+                resolve_bot_detection(page, base_link)
                 
                 # Klik tombol Reject atau X
                 print("  -> Mengklik tombol Reject / X...")
@@ -340,6 +415,8 @@ def main():
             except Exception as e:
                 print(f"  -> Terjadi error pada link {link}:")
                 print(f"     {e}")
+                if check_is_bot_or_blocked(page):
+                    resolve_bot_detection(page, link)
                 print("     Lanjut ke link berikutnya...")
 
             # Jeda acak 3-7 detik antar link untuk mensimulasikan kecepatan manusia
