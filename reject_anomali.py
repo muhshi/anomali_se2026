@@ -200,19 +200,38 @@ def main():
                 
             print(f"[{idx}/{len(edit_links)}] Memproses: {link}")
             try:
-                # Coba navigasi ke link, tangani jika terpotong oleh redirect SSO (biasanya di link pertama)
-                try:
-                    page.goto(link, wait_until="networkidle")
-                except Exception as e:
-                    if "interrupted by another navigation" in str(e):
-                        print("  -> [Info] Navigasi link pertama dialihkan ke Dashboard (SSO Refresh). Mencoba ulang...")
-                        time.sleep(3) # Tunggu redirect selesai
-                        page.goto(link, wait_until="networkidle")
+                # Navigasi ke halaman EDIT — dengan verifikasi URL
+                on_edit_page = False
+                for nav_attempt in range(3):
+                    try:
+                        page.goto(link, wait_until="networkidle", timeout=30000)
+                    except Exception as e:
+                        if "interrupted by another navigation" in str(e):
+                            print("  -> [Info] Navigasi dialihkan oleh SSO Refresh. Mencoba ulang...")
+                            time.sleep(3)
+                            try:
+                                page.goto(link, wait_until="networkidle", timeout=30000)
+                            except Exception:
+                                pass
+                        else:
+                            raise e
+                    
+                    # Cek dan tangani jika terkena blokir bot (WAF/SSO)
+                    resolve_bot_detection(page, link)
+                    
+                    # Verifikasi bahwa browser benar-benar berada di halaman /edit
+                    current_url = page.url
+                    if "/edit" in current_url:
+                        on_edit_page = True
+                        break
                     else:
-                        raise e
+                        print(f"  -> [Warning] Browser tidak di halaman /edit (URL: {current_url}). Mencoba navigasi ulang ({nav_attempt+1}/3)...")
+                        time.sleep(2)
                 
-                # Cek dan tangani jika terkena blokir bot (WAF/SSO)
-                resolve_bot_detection(page, link)
+                if not on_edit_page:
+                    print(f"  -> [ERROR] Gagal membuka halaman /edit setelah 3 percobaan. URL terakhir: {page.url}")
+                    print("     Melewati link ini dan lanjut ke berikutnya...")
+                    raise Exception(f"Gagal navigasi ke halaman /edit. URL terakhir: {page.url}")
                 
                 # 1. Masuk ke menu catatan
                 try:
