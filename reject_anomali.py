@@ -229,9 +229,8 @@ def main():
                         time.sleep(2)
                 
                 if not on_edit_page:
-                    print(f"  -> [ERROR] Gagal membuka halaman /edit setelah 3 percobaan. URL terakhir: {page.url}")
-                    print("     Melewati link ini dan lanjut ke berikutnya...")
-                    raise Exception(f"Gagal navigasi ke halaman /edit. URL terakhir: {page.url}")
+                    print(f"  -> [SKIP] Tidak bisa membuka halaman /edit (bukan wilayah admin?). URL: {page.url}")
+                    continue
                 
                 # 1. Masuk ke menu catatan
                 try:
