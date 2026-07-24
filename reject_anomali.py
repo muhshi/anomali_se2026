@@ -256,39 +256,73 @@ def main():
                     if check_result.get('was_checked'):
                         print("  -> Checkbox sudah tercentang dari awal. Melewati klik 'Kirim'.")
                     else:
-                        # 3. Klik Kirim (Tombol utama)
-                        page.get_by_role("button", name="Kirim").first.click()
-                        time.sleep(1.5) # Tunggu popup muncul
-                        
-                        # 4. Handle Konfirmasi (Bisa muncul 2x popup beruntun)
-                        for _ in range(3):
+                        # 3. Klik Kirim (Tombol utama) — dengan retry dan timeout pendek
+                        kirim_clicked = False
+                        for attempt in range(3):
                             try:
-                                # Cari tombol yang berpotensi menjadi konfirmasi (Kirim, Ya, Konfirmasi, dll)
-                                btns = page.locator("button").filter(has_text=re.compile(r"Kirim|Ya|Konfirmasi|Setuju", re.IGNORECASE)).all()
-                                visible_btns = [b for b in btns if b.is_visible()]
-                                
-                                # Jika ada > 1 tombol (berarti ada 1 tombol utama + tombol di modal)
-                                if len(visible_btns) > 1:
-                                    print("     -> Mengklik tombol konfirmasi pada dialog...")
-                                    visible_btns[-1].click(timeout=3000)
-                                    time.sleep(1.5) # Tunggu dialog berikutnya (jika ada) atau loading
-                                else:
-                                    break # Tidak ada dialog lagi
-                            except Exception as e:
+                                kirim_btn = page.get_by_role("button", name="Kirim").first
+                                kirim_btn.wait_for(state="visible", timeout=5000)
+                                kirim_btn.click(timeout=5000)
+                                kirim_clicked = True
                                 break
+                            except Exception:
+                                # Coba cari tombol submit/kirim lain lewat JS
+                                try:
+                                    found_js = page.evaluate('''() => {
+                                        const btns = Array.from(document.querySelectorAll('button'));
+                                        const target = btns.find(b => {
+                                            const t = (b.textContent || '').toLowerCase().trim();
+                                            return (t.includes('kirim') || t.includes('submit') || t.includes('simpan')) && b.offsetParent !== null;
+                                        });
+                                        if (target) { target.click(); return true; }
+                                        return false;
+                                    }''')
+                                    if found_js:
+                                        kirim_clicked = True
+                                        break
+                                except Exception:
+                                    pass
+                                time.sleep(1)
                         
-                        time.sleep(2)
+                        if kirim_clicked:
+                            time.sleep(1.5) # Tunggu popup muncul
+                            
+                            # 4. Handle Konfirmasi (Bisa muncul 2x popup beruntun)
+                            for _ in range(3):
+                                try:
+                                    # Cari tombol yang berpotensi menjadi konfirmasi (Kirim, Ya, Konfirmasi, dll)
+                                    btns = page.locator("button").filter(has_text=re.compile(r"Kirim|Ya|Konfirmasi|Setuju", re.IGNORECASE)).all()
+                                    visible_btns = [b for b in btns if b.is_visible()]
+                                    
+                                    # Jika ada > 1 tombol (berarti ada 1 tombol utama + tombol di modal)
+                                    if len(visible_btns) > 1:
+                                        print("     -> Mengklik tombol konfirmasi pada dialog...")
+                                        visible_btns[-1].click(timeout=3000)
+                                        time.sleep(1.5) # Tunggu dialog berikutnya (jika ada) atau loading
+                                    else:
+                                        break # Tidak ada dialog lagi
+                                except Exception as e:
+                                    break
+                            
+                            time.sleep(2)
+                        else:
+                            print("  -> [Warning] Tombol 'Kirim' tidak ditemukan. Kemungkinan checkbox sudah tercentang sebelumnya. Lanjut ke Reject...")
                 else:
                     # Fallback Playwright murni jika script JS gagal menemukan teks
                     try:
                         print("  -> (Fallback) Mencoba klik paksa teks 'Tampilkan Anomali'...")
                         page.locator("text=/Tampilkan Anomali/i").first.click(timeout=5000, force=True)
-                        page.get_by_role("button", name="Kirim").first.click()
-                        time.sleep(1)
-                        page.get_by_role("button", name="Kirim").last.click()
-                        time.sleep(2)
-                    except:
-                        pass
+                        try:
+                            kirim_btn = page.get_by_role("button", name="Kirim").first
+                            kirim_btn.wait_for(state="visible", timeout=5000)
+                            kirim_btn.click(timeout=5000)
+                            time.sleep(1)
+                            page.get_by_role("button", name="Kirim").last.click(timeout=5000)
+                            time.sleep(2)
+                        except Exception:
+                            print("  -> [Warning] Tombol 'Kirim' tidak ditemukan di fallback. Lanjut ke Reject...")
+                    except Exception:
+                        print("  -> [Warning] Fallback gagal menemukan checkbox. Lanjut ke Reject...")
                 
                 # --- FASE 2: REJECT ---
                 # Hapus "/edit" dari link untuk kembali ke halaman assignment detail
