@@ -37,10 +37,16 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+
 ### 2026-07-24
 - Menyediakan folder `data/` secara langsung dalam repositori agar pengguna bisa langsung menaruh file Excel data.
 - Memperbarui `.gitignore` agar seluruh file isian di dalam folder `data/` otomatis terabaikan (tidak ter-push), hanya menjaga struktur folder melalui `.gitkeep`.
 - **Fix `run.bat` Exiting**: Menulis ulang struktur `run.bat` menggunakan label `goto` untuk menghilangkan error sintaks Windows Batch (`ke was unexpected`), menangani otomatis pemindahan file Excel di folder utama ke folder `data/`, serta mencegah jendela CMD tertutup otomatis.
 - **Auto Bot/SSO Recovery**: Menambahkan penanganan otomatis saat terdeteksi bot/WAF/SSO timeout (tunggu 5 detik, auto-refresh, dan auto-click "Lanjutkan dengan SSO").
 - **Fix Timeout Tombol 'Kirim'**: Mengubah klik tombol "Kirim" dari single-shot 30 detik menjadi retry 3x dengan timeout pendek (5 detik), ditambah fallback pencarian tombol via JavaScript. Jika tombol memang tidak ada (checkbox sudah tercentang sebelumnya), bot akan langsung lanjut ke fase Reject tanpa error.
-- **Fix Navigasi ke Halaman Salah**: Menambahkan verifikasi URL setelah navigasi untuk memastikan browser benar-benar berada di halaman `/edit`. Sebelumnya, setelah SSO redirect, browser bisa berakhir di halaman detail (tanpa `/edit`), sehingga langkah Catatan, checkbox, dan Kirim gagal. Kini bot akan retry navigasi hingga 3 kali sampai URL benar.
+- **Fix Navigasi ke Halaman Salah**: Menambahkan verifikasi URL setelah navigasi untuk memastikan browser benar-benar berada di halaman `/edit`.
+
+### 2026-07-25
+- **Fix Skip /edit Tanpa Retry**: Jika browser di-redirect keluar dari halaman `/edit` (bukan wilayah admin), langsung skip tanpa retry 3x. Sebelumnya bot sia-sia mencoba navigasi ulang 3 kali padahal hasilnya pasti sama.
+- **Fix Cache Skip**: Link yang di-skip karena tidak bisa akses `/edit` sekarang langsung disimpan ke cache (`processed_links.json`), sehingga tidak akan diproses ulang di run berikutnya.
+
