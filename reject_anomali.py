@@ -200,36 +200,32 @@ def main():
                 
             print(f"[{idx}/{len(edit_links)}] Memproses: {link}")
             try:
-                # Navigasi ke halaman EDIT — dengan verifikasi URL
+                # Navigasi ke halaman EDIT — langsung skip jika redirect (bukan wilayah admin)
                 on_edit_page = False
-                for nav_attempt in range(3):
-                    try:
-                        page.goto(link, wait_until="networkidle", timeout=30000)
-                    except Exception as e:
-                        if "interrupted by another navigation" in str(e):
-                            print("  -> [Info] Navigasi dialihkan oleh SSO Refresh. Mencoba ulang...")
-                            time.sleep(3)
-                            try:
-                                page.goto(link, wait_until="networkidle", timeout=30000)
-                            except Exception:
-                                pass
-                        else:
-                            raise e
-                    
-                    # Cek dan tangani jika terkena blokir bot (WAF/SSO)
-                    resolve_bot_detection(page, link)
-                    
-                    # Verifikasi bahwa browser benar-benar berada di halaman /edit
-                    current_url = page.url
-                    if "/edit" in current_url:
-                        on_edit_page = True
-                        break
+                try:
+                    page.goto(link, wait_until="networkidle", timeout=30000)
+                except Exception as e:
+                    if "interrupted by another navigation" in str(e):
+                        print("  -> [Info] Navigasi dialihkan oleh SSO Refresh. Mencoba ulang...")
+                        time.sleep(3)
+                        try:
+                            page.goto(link, wait_until="networkidle", timeout=30000)
+                        except Exception:
+                            pass
                     else:
-                        print(f"  -> [Warning] Browser tidak di halaman /edit (URL: {current_url}). Mencoba navigasi ulang ({nav_attempt+1}/3)...")
-                        time.sleep(2)
+                        raise e
                 
-                if not on_edit_page:
-                    print(f"  -> [SKIP] Tidak bisa membuka halaman /edit (bukan wilayah admin?). URL: {page.url}")
+                # Cek dan tangani jika terkena blokir bot (WAF/SSO)
+                resolve_bot_detection(page, link)
+                
+                # Verifikasi bahwa browser benar-benar berada di halaman /edit
+                current_url = page.url
+                if "/edit" in current_url:
+                    on_edit_page = True
+                else:
+                    print(f"  -> [SKIP] Browser tidak di halaman /edit (URL: {current_url}). Bukan wilayah admin, langsung skip.")
+                    processed_cache.add(link)
+                    save_cache(processed_cache)
                     continue
                 
                 # 1. Masuk ke menu catatan
