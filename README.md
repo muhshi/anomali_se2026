@@ -52,5 +52,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ### 2026-07-27
 - **Dukungan Filter Excel (Auto-Detect Hidden Rows)**: Mengubah mekanisme pembacaan file Excel menggunakan `openpyxl` agar mengecek status baris tersembunyi (`hidden`). Jika pengguna melakukan filter (AutoFilter) pada Excel, bot hanya akan memproses data yang **tampil/visible**, dan otomatis melewati (skip) baris yang ter-filter.
+- **Filter Otomatis Status Kolom O**: Menambahkan validasi pada Kolom O (kolom 15). Bot hanya akan mengambil dan memproses link yang statusnya **"Belum Ditindaklanjuti"**, sedangkan status lain ("Sudah Ditindaklanjuti...") akan otomatis dilewati.
+
 
 
