@@ -50,3 +50,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Fix Skip /edit Tanpa Retry**: Jika browser di-redirect keluar dari halaman `/edit` (bukan wilayah admin), langsung skip tanpa retry 3x. Sebelumnya bot sia-sia mencoba navigasi ulang 3 kali padahal hasilnya pasti sama.
 - **Fix Cache Skip**: Link yang di-skip karena tidak bisa akses `/edit` sekarang langsung disimpan ke cache (`processed_links.json`), sehingga tidak akan diproses ulang di run berikutnya.
 
+### 2026-07-27
+- **Dukungan Filter Excel (Auto-Detect Hidden Rows)**: Mengubah mekanisme pembacaan file Excel menggunakan `openpyxl` agar mengecek status baris tersembunyi (`hidden`). Jika pengguna melakukan filter (AutoFilter) pada Excel, bot hanya akan memproses data yang **tampil/visible**, dan otomatis melewati (skip) baris yang ter-filter.
+
+
