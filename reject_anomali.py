@@ -117,14 +117,25 @@ def main():
 
     # Looping semua file excel yang ada di folder data
     raw_links = []
+    import openpyxl
+
     for file_name in excel_files:
         excel_file = os.path.join(data_dir, file_name)
         print(f"Membaca file Excel: {file_name}...")
         try:
-            # Membaca kolom R (link) secara langsung
-            df = pd.read_excel(excel_file, usecols="R")
-            links = df.iloc[:, 0].dropna().astype(str).tolist()
-            raw_links.extend(links)
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+            ws = wb.active
+            file_links = []
+            for row in range(1, ws.max_row + 1):
+                # Lewati baris yang disembunyikan / di-filter di Excel
+                if ws.row_dimensions[row].hidden:
+                    continue
+                val = ws.cell(row=row, column=18).value  # Kolom R = 18
+                if val is not None and str(val).strip() != "":
+                    file_links.append(str(val).strip())
+            wb.close()
+            print(f"  -> {len(file_links)} link dibaca dari {file_name} (baris ter-filter/hidden otomatis dilewati).")
+            raw_links.extend(file_links)
         except Exception as e:
             print(f"  -> Gagal membaca file {file_name}: {e}")
 
