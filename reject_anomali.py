@@ -130,11 +130,17 @@ def main():
                 # Lewati baris yang disembunyikan / di-filter di Excel
                 if ws.row_dimensions[row].hidden:
                     continue
+                
+                # Filter hanya yang statusnya "Belum Ditindaklanjuti" di Kolom O (kolom 15)
+                status_val = ws.cell(row=row, column=15).value
+                if status_val is None or "belum ditindaklanjuti" not in str(status_val).strip().lower():
+                    continue
+
                 val = ws.cell(row=row, column=18).value  # Kolom R = 18
                 if val is not None and str(val).strip() != "":
                     file_links.append(str(val).strip())
             wb.close()
-            print(f"  -> {len(file_links)} link dibaca dari {file_name} (baris ter-filter/hidden otomatis dilewati).")
+            print(f"  -> {len(file_links)} link dibaca dari {file_name} (hanya status 'Belum Ditindaklanjuti' & visible).")
             raw_links.extend(file_links)
         except Exception as e:
             print(f"  -> Gagal membaca file {file_name}: {e}")
