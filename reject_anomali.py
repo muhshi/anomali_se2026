@@ -38,11 +38,8 @@ def check_is_bot_or_blocked(page):
 
 def resolve_bot_detection(page, target_link):
     """
-    Penanganan terdeteksi bot (WAF/SSO) sesuai instruksi:
-    1. Tunggu beberapa saat (5 detik)
-    2. Refresh/reload halaman
-    3. Cek & klik tombol 'Lanjutkan dengan SSO' jika ada
-    4. Ulangi otomatis 3 kali sebelum minta intervensi manual.
+    Penanganan terdeteksi bot (WAF/SSO):
+    Tunggu lebih tenang agar IP rate-limit ter-reset, tidak reload agresif.
     """
     if not check_is_bot_or_blocked(page):
         return True
@@ -51,10 +48,10 @@ def resolve_bot_detection(page, target_link):
     print(" [WAF / BOT DETECTED] Halaman terdeteksi bot atau terganggu sesi SSO.")
     print(" Memulai prosedur pemulihan otomatis...")
     
-    max_retries = 3
+    max_retries = 2
     for attempt in range(1, max_retries + 1):
-        print(f" -> [Percobaan {attempt}/{max_retries}] Menunggu 5 detik...")
-        time.sleep(5)
+        print(f" -> [Percobaan {attempt}/{max_retries}] Menunggu 10 detik agar rate-limit ter-reset...")
+        time.sleep(10)
         
         print(" -> Refresh/reload halaman...")
         try:
@@ -64,7 +61,7 @@ def resolve_bot_detection(page, target_link):
                 page.goto(target_link, wait_until="networkidle", timeout=15000)
             except Exception:
                 pass
-        time.sleep(3)
+        time.sleep(4)
         
         # Cari dan klik tombol 'Lanjutkan dengan SSO' jika ada
         try:
@@ -74,7 +71,7 @@ def resolve_bot_detection(page, target_link):
             if sso_btn.count() > 0 and sso_btn.first.is_visible():
                 print(" -> Mengklik tombol 'Lanjutkan dengan SSO'...")
                 sso_btn.first.click()
-                time.sleep(4)
+                time.sleep(5)
                 try:
                     page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception:
@@ -88,8 +85,8 @@ def resolve_bot_detection(page, target_link):
             return True
 
     print("="*60)
-    print(" TERDETEKSI SEBAGAI BOT OLEH SERVER (WAF BPS)!")
-    print(" Pemulihan otomatis belum berhasil. Silakan selesaikan di browser.")
+    print(" TERDETEKSI SEBAGAI BOT OLEH SERVER (WAF BPS / HALOSIS)!")
+    print(" Coba klik tombol 'Kembali' di browser atau ganti koneksi internet (Tethering HP).")
     print(" Tekan ENTER di terminal ini jika halaman sudah kembali normal.")
     print("="*60)
     input("Tekan ENTER untuk melanjutkan bot...")
@@ -98,6 +95,7 @@ def resolve_bot_detection(page, target_link):
     except Exception:
         pass
     return True
+
 
 def main():
     data_dir = os.path.join(os.getcwd(), "data")
@@ -484,10 +482,17 @@ def main():
                     resolve_bot_detection(page, link)
                 print("     Lanjut ke link berikutnya...")
 
-            # Jeda acak 3-7 detik antar link untuk mensimulasikan kecepatan manusia
-            # Ini sangat penting agar IP tidak di-blacklist oleh firewall server BPS
-            delay = random.uniform(3, 7)
+            # Jeda acak 6-12 detik antar link untuk mensimulasikan kecepatan manusia membaca & aksi
+            delay = random.uniform(6, 12)
             time.sleep(delay)
+
+            # Istirahat 30-45 detik setiap kelipatan 15 link agar tidak memicu rate-limit WAF BPS
+            if idx % 15 == 0 and idx < len(edit_links):
+                rest_time = random.uniform(30, 45)
+                print("="*60)
+                print(f" [COOLING DOWN] Telah memproses {idx} link. Istirahat sejenak selama {int(rest_time)} detik agar aman dari WAF...")
+                print("="*60)
+                time.sleep(rest_time)
 
         print("Proses otomatisasi selesai!")
         context.close()
