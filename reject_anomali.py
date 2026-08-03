@@ -20,41 +20,27 @@ def save_cache(cache_set):
         json.dump(list(cache_set), f, indent=4)
 
 # ==========================================
-# HELPER GERAKAN MOUSE MANUSIA (HUMAN MOUSE)
+# HELPER GERAKAN MOUSE NATIVE PLAYWRIGHT
 # ==========================================
 
-def human_move_mouse(page, start_x, start_y, end_x, end_y, steps=None):
+def human_move_mouse(page, start_x, start_y, end_x, end_y, steps=8):
     """
-    Menggerakkan kursor mouse virtual Playwright dengan kurva Bezier 
-    dan kecepatan acak untuk meniru gerakan tangan manusia murni.
+    Menggerakkan kursor mouse virtual dengan lintasan halus 
+    tanpa membanjiri event browser (natural steps).
     """
-    if steps is None:
-        distance = math.hypot(end_x - start_x, end_y - start_y)
-        steps = max(15, int(distance / 15))
-
-    # Tentukan titik kontrol (Control Point) melengkung secara acak
     mid_x = (start_x + end_x) / 2
     mid_y = (start_y + end_y) / 2
-    offset = random.uniform(-60, 60)
+    offset = random.uniform(-30, 30)
     ctrl_x = mid_x + offset
     ctrl_y = mid_y - offset
 
     for i in range(1, steps + 1):
         t = i / steps
-        # Formula Quadratic Bezier Curve: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
         x = (1 - t) ** 2 * start_x + 2 * (1 - t) * t * ctrl_x + t ** 2 * end_x
         y = (1 - t) ** 2 * start_y + 2 * (1 - t) * t * ctrl_y + t ** 2 * end_y
         
-        # Tambahkan sisa mikro-goyangan (wobble) manusia
-        wobble_x = random.uniform(-1.5, 1.5) if i < steps else 0
-        wobble_y = random.uniform(-1.5, 1.5) if i < steps else 0
-        
-        page.mouse.move(x + wobble_x, y + wobble_y)
-        
-        # Jeda waktu antar titik pergerakan (lebih cepat di tengah, lambat di awal & akhir)
-        speed_factor = math.sin(t * math.pi)  # 0 -> 1 -> 0
-        sleep_time = random.uniform(0.005, 0.018) / max(0.2, speed_factor)
-        time.sleep(min(sleep_time, 0.04))
+        page.mouse.move(x, y)
+        time.sleep(random.uniform(0.01, 0.03))
 
 def human_click_box(page, box, current_pos):
     """
@@ -64,47 +50,28 @@ def human_click_box(page, box, current_pos):
     if not box:
         return False
     
-    # Ambil titik acak di dalam area bounding box elemen (tidak selalu persis di tengah)
-    padding_x = box['width'] * 0.2
-    padding_y = box['height'] * 0.2
-    target_x = box['x'] + random.uniform(padding_x, box['width'] - padding_x)
-    target_y = box['y'] + random.uniform(padding_y, box['height'] - padding_y)
+    # Ambil titik acak di dalam area elemen (tidak selalu persis di tengah)
+    padding_x = box['width'] * 0.25
+    padding_y = box['height'] * 0.25
+    target_x = box['x'] + random.uniform(padding_x, max(padding_x, box['width'] - padding_x))
+    target_y = box['y'] + random.uniform(padding_y, max(padding_y, box['height'] - padding_y))
 
     start_x = current_pos.get('x', 500)
     start_y = current_pos.get('y', 500)
 
-    # 1. Gerakkan kursor ke target secara mulus
-    human_move_mouse(page, start_x, start_y, target_x, target_y)
+    # 1. Gerakkan kursor ke target
+    human_move_mouse(page, start_x, start_y, target_x, target_y, steps=random.randint(6, 10))
 
-    # 2. Jeda mikro sebelum klik (refleksi manusia 100-300ms)
-    time.sleep(random.uniform(0.1, 0.3))
+    # 2. Jeda mikro alami manusia sebelum menekan mouse (100-250ms)
+    time.sleep(random.uniform(0.1, 0.25))
 
-    # 3. Klik fisik native Playwright (melempar isTrusted=true event)
+    # 3. Klik fisik native Playwright (isTrusted=true)
     page.mouse.click(target_x, target_y)
 
     # Update posisi kursor saat ini
     current_pos['x'] = target_x
     current_pos['y'] = target_y
     return True
-
-def human_idle_wiggle(page, current_pos, duration_sec):
-    """
-    Menggerakkan kursor sedikit secara acak saat menunggu/idle 
-    agar tidak terlihat seperti kursor mati/bot.
-    """
-    start_time = time.time()
-    while time.time() - start_time < duration_sec:
-        dx = random.uniform(-40, 40)
-        dy = random.uniform(-40, 40)
-        nx = max(50, min(1200, current_pos['x'] + dx))
-        ny = max(50, min(800, current_pos['y'] + dy))
-        human_move_mouse(page, current_pos['x'], current_pos['y'], nx, ny, steps=10)
-        current_pos['x'] = nx
-        current_pos['y'] = ny
-        wait_chunk = random.uniform(0.8, 1.8)
-        if time.time() - start_time + wait_chunk > duration_sec:
-            break
-        time.sleep(wait_chunk)
 
 # ==========================================
 
@@ -128,7 +95,7 @@ def check_is_bot_or_blocked(page):
 
 def resolve_bot_detection(page, target_link, current_pos=None):
     """
-    Penanganan terdeteksi bot (WAF/SSO) sesuai instruksi:
+    Penanganan terdeteksi bot (WAF/SSO):
     1. Tunggu beberapa saat (5 detik)
     2. Refresh/reload halaman
     3. Cek & klik tombol 'Lanjutkan dengan SSO' jika ada
@@ -162,7 +129,7 @@ def resolve_bot_detection(page, target_link, current_pos=None):
                 has_text=re.compile(r"Lanjutkan dengan SSO|Lanjutkan SSO|Login.*SSO|Masuk.*SSO|Lanjutkan", re.IGNORECASE)
             )
             if sso_btn.count() > 0 and sso_btn.first.is_visible():
-                print(" -> Mengklik tombol 'Lanjutkan dengan SSO' dengan gerakan mouse...")
+                print(" -> Mengklik tombol 'Lanjutkan dengan SSO'...")
                 box = sso_btn.first.bounding_box()
                 if box and current_pos is not None:
                     human_click_box(page, box, current_pos)
@@ -196,7 +163,6 @@ def resolve_bot_detection(page, target_link, current_pos=None):
 def main():
     data_dir = os.path.join(os.getcwd(), "data")
     
-    # Buat folder data jika belum ada
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
         print(f"Folder 'data' telah dibuat di {data_dir}")
@@ -209,7 +175,6 @@ def main():
         print(f"Silakan masukkan file Excel anomali (.xlsx) ke dalam folder: {data_dir}")
         return
 
-    # Looping semua file excel yang ada di folder data
     raw_links = []
     import openpyxl
 
@@ -221,16 +186,14 @@ def main():
             ws = wb.active
             file_links = []
             for row in range(1, ws.max_row + 1):
-                # Lewati baris yang disembunyikan / di-filter di Excel
                 if ws.row_dimensions[row].hidden:
                     continue
                 
-                # Filter hanya yang statusnya "Belum Ditindaklanjuti" di Kolom O (kolom 15)
                 status_val = ws.cell(row=row, column=15).value
                 if status_val is None or "belum ditindaklanjuti" not in str(status_val).strip().lower():
                     continue
 
-                val = ws.cell(row=row, column=18).value  # Kolom R = 18
+                val = ws.cell(row=row, column=18).value
                 if val is not None and str(val).strip() != "":
                     file_links.append(str(val).strip())
             wb.close()
@@ -243,17 +206,14 @@ def main():
         print("Tidak ada data yang berhasil dibaca dari file Excel mana pun.")
         return
 
-    # Filter dan bentuk ulang link menjadi format /edit
     kegiatan_id = "fd68e454-ba45-4b85-8205-f3bf777ded24"
     edit_links = []
     
     for link in raw_links:
         link = link.strip()
-        # Ekstrak ID dinamis dari link awal
         match = re.search(r"assignment-detail/([a-zA-Z0-9\-]+)", link)
         if match:
             dynamic_id = match.group(1)
-            # Buat link edit baru
             new_link = f"https://fasih-sm.bps.go.id/app/assignment/{kegiatan_id}/{dynamic_id}/edit"
             edit_links.append(new_link)
 
@@ -264,8 +224,6 @@ def main():
         return
 
     processed_cache = load_cache()
-    
-    # Filter link yang belum diproses untuk mengetahui sisa pekerjaan
     pending_links = [link for link in edit_links if link not in processed_cache]
     
     print(f"Total link: {len(edit_links)}")
@@ -277,31 +235,38 @@ def main():
         return
 
     print("="*60)
-    print("Membuka browser Playwright dengan Human Mouse Movement...")
+    print("Membuka browser Playwright...")
     
     with sync_playwright() as p:
         user_data_dir = os.path.join(os.getcwd(), "chrome_profile_anomali")
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=user_data_dir,
-            headless=False,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--start-maximized"
-            ],
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            no_viewport=True
-        )
         
-        # Gunakan page pertama yang terbuka otomatis
+        # Opsi 1: Coba gunakan Google Chrome asli jika terpasang (jauh lebih aman dari WAF)
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--start-maximized"
+        ]
+        
+        context_kwargs = {
+            "user_data_dir": user_data_dir,
+            "headless": False,
+            "args": launch_args,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "no_viewport": True
+        }
+        
+        # Coba buka via channel 'chrome' (Google Chrome asli pengguna)
+        try:
+            context = p.chromium.launch_persistent_context(channel="chrome", **context_kwargs)
+            print("  -> Menjalankan via Google Chrome Asli (System Chrome)...")
+        except Exception:
+            context = p.chromium.launch_persistent_context(**context_kwargs)
+            print("  -> Menjalankan via Playwright Chromium...")
+        
         page = context.pages[0] if context.pages else context.new_page()
         
-        # Bypass webdriver & fingerprinting dasar
-        page.add_init_script("""
-            delete navigator.__proto__.webdriver;
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        """)
+        # Bypass webdriver sederhana (aman tanpa jebakan Object.defineProperty)
+        page.add_init_script("delete navigator.__proto__.webdriver;")
 
-        # Posisi awal kursor mouse virtual di layar browser
         current_pos = {"x": random.randint(300, 700), "y": random.randint(200, 500)}
 
         page.goto("https://fasih-sm.bps.go.id/")
@@ -344,7 +309,7 @@ def main():
                     save_cache(processed_cache)
                     continue
                 
-                # 1. Masuk ke menu Catatan (gerakan mouse manusia)
+                # 1. Masuk ke menu Catatan
                 print("  -> Mengarahkan mouse ke tab 'Catatan'...")
                 tab_catatan = page.get_by_role("tab", name="Catatan", exact=False)
                 if tab_catatan.count() == 0:
@@ -361,10 +326,10 @@ def main():
                     human_click_box(page, box_catatan, current_pos)
                 else:
                     tab_catatan.first.click(timeout=10000)
-                time.sleep(1)
+                time.sleep(1.2)
                 
-                # 2. Centang checkbox "Tampilkan Anomali Usaha dan Keluarga" dengan lokasi fisik & gerakan mouse
-                print("  -> Mencari dan mengklik checkbox 'Tampilkan Anomali' dengan gerakan mouse...")
+                # 2. Centang checkbox "Tampilkan Anomali Usaha dan Keluarga"
+                print("  -> Mencari dan mengklik checkbox 'Tampilkan Anomali'...")
                 cb_info = page.evaluate('''() => {
                     const elements = Array.from(document.querySelectorAll('*'));
                     const targetEl = elements.find(el => el.textContent && el.textContent.toLowerCase().includes('tampilkan anomali') && el.children.length === 0);
@@ -403,13 +368,12 @@ def main():
                             human_click_box(page, rect, current_pos)
                         else:
                             page.locator("text=/Tampilkan Anomali/i").first.click(force=True)
-                        time.sleep(1)
+                        time.sleep(1.2)
 
-                        # 3. Klik Kirim (Tombol utama) dengan gerakan mouse
+                        # 3. Klik Kirim (Tombol utama)
                         print("  -> Mengarahkan mouse ke tombol 'Kirim'...")
                         kirim_clicked = False
                         
-                        # Cari bounding box tombol Kirim lewat DOM / locator
                         kirim_rect = page.evaluate('''() => {
                             const btns = Array.from(document.querySelectorAll('button'));
                             const target = btns.find(b => {
@@ -440,9 +404,9 @@ def main():
                                 pass
 
                         if kirim_clicked:
-                            time.sleep(1.5) # Tunggu popup konfirmasi muncul
+                            time.sleep(1.5)
                             
-                            # 4. Handle Konfirmasi Modal dengan Gerakan Mouse
+                            # 4. Handle Konfirmasi Modal
                             for _ in range(3):
                                 confirm_rect = page.evaluate('''() => {
                                     const modal = document.querySelector('.modal, [role="dialog"], [data-state="open"]');
@@ -454,7 +418,6 @@ def main():
                                             return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
                                         }
                                     }
-                                    // Fallback tombol konfirmasi umum
                                     const btns = Array.from(document.querySelectorAll('button'));
                                     const target = btns.find(b => {
                                         const t = (b.textContent || '').toLowerCase().trim();
@@ -468,7 +431,7 @@ def main():
                                 }''')
                                 
                                 if confirm_rect and confirm_rect.get('width', 0) > 0:
-                                    print("     -> Mengklik tombol konfirmasi dialog dengan gerakan mouse...")
+                                    print("     -> Mengklik tombol konfirmasi dialog...")
                                     human_click_box(page, confirm_rect, current_pos)
                                     time.sleep(1.5)
                                 else:
@@ -476,9 +439,8 @@ def main():
                             
                             time.sleep(2)
                         else:
-                            print("  -> [Warning] Tombol 'Kirim' tidak ditemukan. Kemungkinan checkbox sudah tercentang. Lanjut ke Reject...")
+                            print("  -> [Warning] Tombol 'Kirim' tidak ditemukan. Lanjut ke Reject...")
                 else:
-                    # Fallback Playwright murni
                     try:
                         print("  -> (Fallback) Mencoba klik paksa teks 'Tampilkan Anomali'...")
                         el = page.locator("text=/Tampilkan Anomali/i").first
@@ -507,7 +469,7 @@ def main():
                 time.sleep(2)
                 resolve_bot_detection(page, base_link, current_pos)
                 
-                # Klik tombol Reject atau X dengan gerakan mouse
+                # Klik tombol Reject atau X
                 print("  -> Mengarahkan mouse ke tombol Reject / X...")
                 reject_success = False
                 for _ in range(10):
@@ -557,9 +519,9 @@ def main():
                 if not reject_success:
                     raise Exception("Gagal menemukan tombol Reject/X di halaman setelah menunggu 10 detik.")
                 
-                time.sleep(1.5) # Tunggu dialog konfirmasi muncul
+                time.sleep(1.5)
                 
-                # Klik tombol Konfirmasi di dialog dengan gerakan mouse
+                # Klik tombol Konfirmasi di dialog
                 print("  -> Mengarahkan mouse ke tombol Konfirmasi...")
                 confirm_success = False
                 for _ in range(10):
@@ -594,11 +556,10 @@ def main():
                     time.sleep(1)
                 
                 if not confirm_success:
-                    print("     [Warning] Tombol Konfirmasi tidak ditemukan. Melanjutkan (mungkin langsung tersimpan otomatis).")
+                    print("     [Warning] Tombol Konfirmasi tidak ditemukan. Melanjutkan...")
                 
-                time.sleep(2.5) # Tunggu proses loading reject selesai ke server
+                time.sleep(2.5)
                 
-                # 5. Simpan ke cache jika sukses
                 processed_cache.add(link)
                 save_cache(processed_cache)
                 print(f"  -> Sukses dikirim, direject, dan disimpan ke cache.")
@@ -610,9 +571,9 @@ def main():
                     resolve_bot_detection(page, link, current_pos)
                 print("     Lanjut ke link berikutnya...")
 
-            # Jeda acak 3-7 detik antar link dengan Human Idle Mouse Wiggle
-            delay = random.uniform(3, 7)
-            human_idle_wiggle(page, current_pos, delay)
+            # Delay alami 4-8 detik antar link (tanpa spam event mouse)
+            delay = random.uniform(4.0, 8.0)
+            time.sleep(delay)
 
         print("Proses otomatisasi selesai!")
         context.close()

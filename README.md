@@ -54,7 +54,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Backup Script**: Membuat `reject_anomali_backup.py` sebagai cadangan script versi stabil sebelumnya.
 - **Human Mouse Movement Simulation**: Mengimplementasikan simulasi gerakan kursor mouse virtual alami (Bezier curve dengan micro-wobble dan percepatan acak) pada `reject_anomali.py`.
 - **Native Trusted Events**: Mengganti aksi klik instan JavaScript dengan gerakan kursor dan klik fisik native Playwright (`page.mouse.click`), sehingga event klik memiliki koordinat valid dan terverifikasi `isTrusted=true` oleh WAF/Anti-Bot BPS.
-- **Human Idle Mouse Wiggle**: Menambahkan gerakan kursor halus saat jeda antar link (*idle delay*) untuk menirukan aktivitas manusia.
+- **Fix WAF Bot Detection Trap**: Menggunakan Google Chrome asli sistem (`channel="chrome"`), menghapus perangkap script `Object.defineProperty`, dan menghilangkan spam event *idle mouse wiggle* yang memicu blokir WAF/HaloSIS BPS.
 
 ### 2026-07-27
 - **Dukungan Filter Excel (Auto-Detect Hidden Rows)**: Mengubah mekanisme pembacaan file Excel menggunakan `openpyxl` agar mengecek status baris tersembunyi (`hidden`). Jika pengguna melakukan filter (AutoFilter) pada Excel, bot hanya akan memproses data yang **tampil/visible**, dan otomatis melewati (skip) baris yang ter-filter.
