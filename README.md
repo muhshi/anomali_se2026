@@ -50,9 +50,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Fix Skip /edit Tanpa Retry**: Jika browser di-redirect keluar dari halaman `/edit` (bukan wilayah admin), langsung skip tanpa retry 3x. Sebelumnya bot sia-sia mencoba navigasi ulang 3 kali padahal hasilnya pasti sama.
 - **Fix Cache Skip**: Link yang di-skip karena tidak bisa akses `/edit` sekarang langsung disimpan ke cache (`processed_links.json`), sehingga tidak akan diproses ulang di run berikutnya.
 
+### 2026-08-03
+- **Backup Script**: Membuat `reject_anomali_backup.py` sebagai cadangan script versi stabil sebelumnya.
+- **Human Mouse Movement Simulation**: Mengimplementasikan simulasi gerakan kursor mouse virtual alami (Bezier curve dengan micro-wobble dan percepatan acak) pada `reject_anomali.py`.
+- **Native Trusted Events**: Mengganti aksi klik instan JavaScript dengan gerakan kursor dan klik fisik native Playwright (`page.mouse.click`), sehingga event klik memiliki koordinat valid dan terverifikasi `isTrusted=true` oleh WAF/Anti-Bot BPS.
+- **Human Idle Mouse Wiggle**: Menambahkan gerakan kursor halus saat jeda antar link (*idle delay*) untuk menirukan aktivitas manusia.
+
 ### 2026-07-27
 - **Dukungan Filter Excel (Auto-Detect Hidden Rows)**: Mengubah mekanisme pembacaan file Excel menggunakan `openpyxl` agar mengecek status baris tersembunyi (`hidden`). Jika pengguna melakukan filter (AutoFilter) pada Excel, bot hanya akan memproses data yang **tampil/visible**, dan otomatis melewati (skip) baris yang ter-filter.
 - **Filter Otomatis Status Kolom O**: Menambahkan validasi pada Kolom O (kolom 15). Bot hanya akan mengambil dan memproses link yang statusnya **"Belum Ditindaklanjuti"**, sedangkan status lain ("Sudah Ditindaklanjuti...") akan otomatis dilewati.
-
-
-
