@@ -8,6 +8,14 @@ import random
 
 CACHE_FILE = "processed_links.json"
 
+# ==============================================================================
+# KONFIGURASI PENGATURAN BOT
+# ==============================================================================
+# Set ke True jika ingin memproses file anomali Missing Value NIK.
+# Set ke False (default) jika ingin MELEWATI (SKIP) file Missing Value NIK.
+PROSES_MISSING_VALUE_NIK = False
+# ==============================================================================
+
 def load_cache():
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r") as f:
@@ -125,6 +133,20 @@ def main():
     for file_name in excel_files:
         excel_file = os.path.join(data_dir, file_name)
         print(f"Membaca file Excel: {file_name}...")
+        
+        # Cek jika file merupakan Anomali Missing Value NIK
+        is_missing_value_file = "missing_value" in file_name.lower() or "missing value" in file_name.lower()
+        if is_missing_value_file and not PROSES_MISSING_VALUE_NIK:
+            print(f"  -> [SKIP / DISABLED] File ini dilewati karena 'PROSES_MISSING_VALUE_NIK = False'.")
+            file_summaries.append({
+                "file_name": file_name,
+                "total": 0,
+                "processed": 0,
+                "pending": 0,
+                "disabled": True
+            })
+            continue
+
         try:
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             ws = wb.active
@@ -190,7 +212,8 @@ def main():
                 "file_name": file_name,
                 "total": total_file_links,
                 "processed": processed_file_links,
-                "pending": pending_file_links
+                "pending": pending_file_links,
+                "disabled": False
             })
             
         except Exception as e:
@@ -206,13 +229,17 @@ def main():
     print("="*60)
     for idx, s in enumerate(file_summaries, 1):
         fname = s['file_name']
-        tot = s['total']
-        prc = s['processed']
-        pnd = s['pending']
-        print(f" [{idx}] {fname}")
-        print(f"     - Total Link Valid : {tot}")
-        print(f"     - Sudah Diproses   : {prc}")
-        print(f"     - Sisa Diproses    : {pnd}")
+        if s.get('disabled'):
+            print(f" [{idx}] {fname}")
+            print(f"     - [STATUS: DISABLED] File dilewati karena 'PROSES_MISSING_VALUE_NIK = False'")
+        else:
+            tot = s['total']
+            prc = s['processed']
+            pnd = s['pending']
+            print(f" [{idx}] {fname}")
+            print(f"     - Total Link Valid : {tot}")
+            print(f"     - Sudah Diproses   : {prc}")
+            print(f"     - Sisa Diproses    : {pnd}")
 
     # Hitung ringkasan total gabungan
     pending_links = [link for link in edit_links if link not in processed_cache]

@@ -55,6 +55,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Dukungan File Tanpa Kolom Status**: Jika file Excel tidak memiliki kolom status `Tindak Lanjut` (seperti file Anomali NIK Missing Value), bot akan otomatis memproses semua data visible dan mengandalkan cache lokal `processed_links.json` untuk melacak progress pengerjaan.
 - **Robustness Filter Excel**: Menambahkan validasi `ws.row_dimensions[row].height == 0` selain `hidden` untuk menjamin 100% data yang di-filter pada Excel oleh user akan di-skip saat menarik link awal.
 - **Rekapan Rincian Per File Excel**: Menambahkan tampilan ringkasan sebelum browser dibuka yang menyajikan jumlah Total Link Valid, Sudah Diproses (Cache), dan Sisa Diproses secara terpisah untuk setiap file Excel di folder `data`.
+- **Variabel Kontrol `PROSES_MISSING_VALUE_NIK` (Default: False)**: Menambahkan variabel sakelar `PROSES_MISSING_VALUE_NIK = False` di bagian paling atas `reject_anomali.py` agar pengguna bisa dengan mudah mengaktifkan/men-disable pemrosesan file anomali Missing Value NIK secara manual.
 
 ### 2026-07-27
 - **Dukungan Filter Excel (Auto-Detect Hidden Rows)**: Mengubah mekanisme pembacaan file Excel menggunakan `openpyxl` agar mengecek status baris tersembunyi (`hidden`). Jika pengguna melakukan filter (AutoFilter) pada Excel, bot hanya akan memproses data yang **tampil/visible**, dan otomatis melewati (skip) baris yang ter-filter.
