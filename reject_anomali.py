@@ -147,8 +147,8 @@ def main():
                 link_col = 18
 
             for row in range(header_row + 1, ws.max_row + 1):
-                # Lewati baris yang disembunyikan / di-filter di Excel
-                if ws.row_dimensions[row].hidden:
+                # Lewati baris yang disembunyikan / di-filter di Excel (hidden atau height 0)
+                if ws.row_dimensions[row].hidden or ws.row_dimensions[row].height == 0:
                     continue
                 
                 # Filter hanya yang statusnya "Belum Ditindaklanjuti" jika kolom Tindak Lanjut ada
