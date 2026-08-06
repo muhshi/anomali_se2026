@@ -113,9 +113,14 @@ def main():
         print(f"Silakan masukkan file Excel anomali (.xlsx) ke dalam folder: {data_dir}")
         return
 
-    # Looping semua file excel yang ada di folder data
-    raw_links = []
+    # Load cache terlebih dahulu agar bisa menghitung status per file
+    processed_cache = load_cache()
+    kegiatan_id = "fd68e454-ba45-4b85-8205-f3bf777ded24"
+    
     import openpyxl
+    
+    file_summaries = []
+    edit_links = []
 
     for file_name in excel_files:
         excel_file = os.path.join(data_dir, file_name)
@@ -162,47 +167,66 @@ def main():
                     file_links.append(str(val).strip())
             wb.close()
             
+            # Konversi file_links ke format /edit
+            file_edit_links = []
+            for link in file_links:
+                link = link.strip()
+                match = re.search(r"assignment-detail/([a-zA-Z0-9\-]+)", link)
+                if match:
+                    dynamic_id = match.group(1)
+                    new_link = f"https://fasih-sm.bps.go.id/app/assignment/{kegiatan_id}/{dynamic_id}/edit"
+                    file_edit_links.append(new_link)
+                    if new_link not in edit_links:
+                        edit_links.append(new_link)
+
+            total_file_links = len(file_edit_links)
+            processed_file_links = sum(1 for l in file_edit_links if l in processed_cache)
+            pending_file_links = total_file_links - processed_file_links
+            
             status_info = f"hanya status 'Belum Ditindaklanjuti' [Kolom {status_col}]" if status_col else "proses semua data [Tanpa kolom status]"
-            print(f"  -> {len(file_links)} link dibaca dari {file_name} (Header baris {header_row}, Link kolom {link_col}, {status_info}).")
-            raw_links.extend(file_links)
+            print(f"  -> {total_file_links} link dibaca dari {file_name} (Header baris {header_row}, Link kolom {link_col}, {status_info}).")
+            
+            file_summaries.append({
+                "file_name": file_name,
+                "total": total_file_links,
+                "processed": processed_file_links,
+                "pending": pending_file_links
+            })
+            
         except Exception as e:
             print(f"  -> Gagal membaca file {file_name}: {e}")
 
-    if not raw_links:
-        print("Tidak ada data yang berhasil dibaca dari file Excel mana pun.")
-        return
-
-    # Filter dan bentuk ulang link menjadi format /edit
-    kegiatan_id = "fd68e454-ba45-4b85-8205-f3bf777ded24"
-    edit_links = []
-    
-    for link in raw_links:
-        link = link.strip()
-        # Ekstrak ID dinamis dari link awal
-        match = re.search(r"assignment-detail/([a-zA-Z0-9\-]+)", link)
-        if match:
-            dynamic_id = match.group(1)
-            # Buat link edit baru
-            new_link = f"https://fasih-sm.bps.go.id/app/assignment/{kegiatan_id}/{dynamic_id}/edit"
-            edit_links.append(new_link)
-
-    print(f"Ditemukan {len(edit_links)} link anomali dalam file Excel.")
-
     if not edit_links:
-        print("Tidak ada link valid yang ditemukan di file Excel.")
+        print("Tidak ada link valid yang ditemukan di file Excel mana pun.")
         return
 
-    processed_cache = load_cache()
-    
-    # Filter link yang belum diproses untuk mengetahui sisa pekerjaan
+    # Tampilkan rekapan detail per file
+    print("="*60)
+    print(" REKAPAN DATA ANOMALI PER FILE EXCEL:")
+    print("="*60)
+    for idx, s in enumerate(file_summaries, 1):
+        fname = s['file_name']
+        tot = s['total']
+        prc = s['processed']
+        pnd = s['pending']
+        print(f" [{idx}] {fname}")
+        print(f"     - Total Link Valid : {tot}")
+        print(f"     - Sudah Diproses   : {prc}")
+        print(f"     - Sisa Diproses    : {pnd}")
+
+    # Hitung ringkasan total gabungan
     pending_links = [link for link in edit_links if link not in processed_cache]
-    
-    print(f"Total link: {len(edit_links)}")
-    print(f"Sudah diproses (dari cache): {len(processed_cache)}")
-    print(f"Sisa yang akan diproses: {len(pending_links)}")
+    total_processed_unique = sum(1 for l in edit_links if l in processed_cache)
+
+    print("-"*60)
+    print(" TOTAL SELURUH FILE:")
+    print(f" - Total Link Valid : {len(edit_links)}")
+    print(f" - Sudah Diproses   : {total_processed_unique} (dari cache)")
+    print(f" - Sisa Diproses    : {len(pending_links)}")
+    print("="*60)
     
     if not pending_links:
-        print("Semua data untuk kodekec ini sudah berhasil diproses!")
+        print("Semua data pada seluruh file Excel sudah berhasil diproses!")
         return
 
     print("="*60)
