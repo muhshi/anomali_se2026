@@ -124,21 +124,46 @@ def main():
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             ws = wb.active
             file_links = []
-            for row in range(1, ws.max_row + 1):
+            
+            # Cari header row, kolom Link Fasih, dan kolom Tindak Lanjut secara dinamis
+            header_row = 4
+            link_col = None
+            status_col = None
+            
+            for r in range(1, 10):
+                row_vals = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
+                row_str = [str(v).strip().lower() if v else '' for v in row_vals]
+                if any('link fasih' in s or 'link' in s for s in row_str):
+                    header_row = r
+                    for c_idx, s in enumerate(row_str, 1):
+                        if 'link fasih' in s or 'link' in s:
+                            link_col = c_idx
+                        if 'tindak lanjut' in s or 'tindaklanjut' in s:
+                            status_col = c_idx
+                    break
+            
+            # Fallback jika header tidak ketemu secara otomatis
+            if link_col is None:
+                link_col = 18
+
+            for row in range(header_row + 1, ws.max_row + 1):
                 # Lewati baris yang disembunyikan / di-filter di Excel
                 if ws.row_dimensions[row].hidden:
                     continue
                 
-                # Filter hanya yang statusnya "Belum Ditindaklanjuti" di Kolom O (kolom 15)
-                status_val = ws.cell(row=row, column=15).value
-                if status_val is None or "belum ditindaklanjuti" not in str(status_val).strip().lower():
-                    continue
+                # Filter hanya yang statusnya "Belum Ditindaklanjuti" jika kolom Tindak Lanjut ada
+                if status_col is not None:
+                    status_val = ws.cell(row=row, column=status_col).value
+                    if status_val is None or "belum ditindaklanjuti" not in str(status_val).strip().lower():
+                        continue
 
-                val = ws.cell(row=row, column=18).value  # Kolom R = 18
+                val = ws.cell(row=row, column=link_col).value
                 if val is not None and str(val).strip() != "":
                     file_links.append(str(val).strip())
             wb.close()
-            print(f"  -> {len(file_links)} link dibaca dari {file_name} (hanya status 'Belum Ditindaklanjuti' & visible).")
+            
+            status_info = f"hanya status 'Belum Ditindaklanjuti' [Kolom {status_col}]" if status_col else "proses semua data [Tanpa kolom status]"
+            print(f"  -> {len(file_links)} link dibaca dari {file_name} (Header baris {header_row}, Link kolom {link_col}, {status_info}).")
             raw_links.extend(file_links)
         except Exception as e:
             print(f"  -> Gagal membaca file {file_name}: {e}")
