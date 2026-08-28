@@ -129,6 +129,7 @@ def main():
     
     file_summaries = []
     edit_links = []
+    link_to_kecamatan = {}
 
     for file_name in excel_files:
         excel_file = os.path.join(data_dir, file_name)
@@ -152,10 +153,11 @@ def main():
             ws = wb.active
             file_links = []
             
-            # Cari header row, kolom Link Fasih, dan kolom Tindak Lanjut secara dinamis
+            # Cari header row, kolom Link Fasih, kolom Tindak Lanjut, dan kolom Kecamatan secara dinamis
             header_row = 4
             link_col = None
             status_col = None
+            kec_col = None
             
             for r in range(1, 10):
                 row_vals = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
@@ -167,11 +169,15 @@ def main():
                             link_col = c_idx
                         if 'tindak lanjut' in s or 'tindaklanjut' in s:
                             status_col = c_idx
+                        if 'nama kecamatan' in s or 'kecamatan' in s or 'nama kec' in s:
+                            kec_col = c_idx
                     break
             
             # Fallback jika header tidak ketemu secara otomatis
             if link_col is None:
                 link_col = 18
+            if kec_col is None:
+                kec_col = 8
 
             for row in range(header_row + 1, ws.max_row + 1):
                 # Lewati baris yang disembunyikan / di-filter di Excel (hidden atau height 0)
@@ -185,19 +191,21 @@ def main():
                         continue
 
                 val = ws.cell(row=row, column=link_col).value
+                kec_val = str(ws.cell(row=row, column=kec_col).value or 'UNKNOWN').strip().upper() if kec_col else 'UNKNOWN'
                 if val is not None and str(val).strip() != "":
-                    file_links.append(str(val).strip())
+                    file_links.append((str(val).strip(), kec_val))
             wb.close()
             
             # Konversi file_links ke format /edit
             file_edit_links = []
-            for link in file_links:
+            for link, kec_val in file_links:
                 link = link.strip()
                 match = re.search(r"assignment-detail/([a-zA-Z0-9\-]+)", link)
                 if match:
                     dynamic_id = match.group(1)
                     new_link = f"https://fasih-sm.bps.go.id/app/assignment/{kegiatan_id}/{dynamic_id}/edit"
                     file_edit_links.append(new_link)
+                    link_to_kecamatan[new_link] = kec_val
                     if new_link not in edit_links:
                         edit_links.append(new_link)
 
@@ -224,9 +232,9 @@ def main():
         return
 
     # Tampilkan rekapan detail per file
-    print("="*60)
+    print("="*65)
     print(" REKAPAN DATA ANOMALI PER FILE EXCEL:")
-    print("="*60)
+    print("="*65)
     for idx, s in enumerate(file_summaries, 1):
         fname = s['file_name']
         if s.get('disabled'):
@@ -236,27 +244,51 @@ def main():
             tot = s['total']
             prc = s['processed']
             pnd = s['pending']
+            pct = (prc / tot * 100) if tot > 0 else 0.0
             print(f" [{idx}] {fname}")
             print(f"     - Total Link Valid : {tot}")
-            print(f"     - Sudah Diproses   : {prc}")
+            print(f"     - Sudah Diproses   : {prc} ({pct:.1f}%)")
             print(f"     - Sisa Diproses    : {pnd}")
+
+    # Hitung ringkasan per kecamatan
+    kecamatan_stats = {}
+    for link in edit_links:
+        kec = link_to_kecamatan.get(link, "UNKNOWN")
+        if kec not in kecamatan_stats:
+            kecamatan_stats[kec] = {"total": 0, "processed": 0, "pending": 0}
+        kecamatan_stats[kec]["total"] += 1
+        if link in processed_cache:
+            kecamatan_stats[kec]["processed"] += 1
+        else:
+            kecamatan_stats[kec]["pending"] += 1
+
+    # Tampilkan rekapan detail per kecamatan
+    print("="*65)
+    print(" REKAPAN DATA ANOMALI PER KECAMATAN:")
+    print("="*65)
+    print(f" {'No':<3} {'Nama Kecamatan':<20} {'Total':>7} {'Sudah':>7} {'Sisa':>7} {'Progress':>9}")
+    print("-" * 65)
+    for idx, (kec_name, stat) in enumerate(sorted(kecamatan_stats.items()), 1):
+        tot = stat["total"]
+        prc = stat["processed"]
+        pnd = stat["pending"]
+        pct = (prc / tot * 100) if tot > 0 else 0.0
+        print(f" {idx:<3} {kec_name:<20} {tot:>7} {prc:>7} {pnd:>7} {pct:>8.1f}%")
 
     # Hitung ringkasan total gabungan
     pending_links = [link for link in edit_links if link not in processed_cache]
     total_processed_unique = sum(1 for l in edit_links if l in processed_cache)
+    total_pct = (total_processed_unique / len(edit_links) * 100) if len(edit_links) > 0 else 0.0
 
-    print("-"*60)
-    print(" TOTAL SELURUH FILE:")
-    print(f" - Total Link Valid : {len(edit_links)}")
-    print(f" - Sudah Diproses   : {total_processed_unique} (dari cache)")
-    print(f" - Sisa Diproses    : {len(pending_links)}")
-    print("="*60)
+    print("-" * 65)
+    print(f" {'TOTAL SELURUHNYA':<24} {len(edit_links):>7} {total_processed_unique:>7} {len(pending_links):>7} {total_pct:>8.1f}%")
+    print("="*65)
     
     if not pending_links:
         print("Semua data pada seluruh file Excel sudah berhasil diproses!")
         return
 
-    print("="*60)
+    print("="*65)
     print("Membuka browser Playwright...")
     
     with sync_playwright() as p:
@@ -281,15 +313,17 @@ def main():
         page.goto("https://fasih-sm.bps.go.id/")
         
         print("Silakan login ke Fasih-SM (SSO BPS) jika belum login.")
-        print("="*60)
+        print("="*65)
         input("Tekan ENTER di terminal ini jika sudah berhasil login dan siap memulai...")
 
         for idx, link in enumerate(edit_links, 1):
+            kec_name = link_to_kecamatan.get(link, "")
+            kec_prefix = f" [{kec_name}]" if kec_name else ""
             if link in processed_cache:
-                print(f"[{idx}/{len(edit_links)}] SKIP (Sudah diproses): {link}")
+                print(f"[{idx}/{len(edit_links)}]{kec_prefix} SKIP (Sudah diproses): {link}")
                 continue
                 
-            print(f"[{idx}/{len(edit_links)}] Memproses: {link}")
+            print(f"[{idx}/{len(edit_links)}]{kec_prefix} Memproses: {link}")
             try:
                 # Navigasi ke halaman EDIT — langsung skip jika redirect (bukan wilayah admin)
                 on_edit_page = False

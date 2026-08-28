@@ -37,8 +37,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-08-28
+- **Rekapan Rincian Per Kecamatan**: Menambahkan ringkasan statistik per kecamatan sebelum browser dibuka yang menampilkan kolom Nomor, Nama Kecamatan, Total Link, Jumlah Sudah Diproses (Cache), Sisa yang Akan Diproses, serta Persentase Progress pengerjaan.
+- **Deteksi Dinamis Kolom Kecamatan**: Memperbarui parser Excel agar secara otomatis mendeteksi kolom `Nama Kecamatan` / `Kecamatan`.
+- **Indikator Kecamatan pada Log Pemrosesan**: Menyematkan nama kecamatan pada setiap baris log pemrosesan link (contoh: `[1/111] [MRANGGEN] Memproses: ...`).
 
-### 2026-07-24
+### 2026-08-06
 - Menyediakan folder `data/` secara langsung dalam repositori agar pengguna bisa langsung menaruh file Excel data.
 - Memperbarui `.gitignore` agar seluruh file isian di dalam folder `data/` otomatis terabaikan (tidak ter-push), hanya menjaga struktur folder melalui `.gitkeep`.
 - **Fix `run.bat` Exiting**: Menulis ulang struktur `run.bat` menggunakan label `goto` untuk menghilangkan error sintaks Windows Batch (`ke was unexpected`), menangani otomatis pemindahan file Excel di folder utama ke folder `data/`, serta mencegah jendela CMD tertutup otomatis.
