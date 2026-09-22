@@ -8,6 +8,7 @@ venv.bak/
 # Playwright cache / profile
 chrome_profile_anomali/
 processed_links.json
+processed_status_ditemukan.json
 
 # Data files
 data/*

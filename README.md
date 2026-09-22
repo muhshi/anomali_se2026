@@ -29,13 +29,25 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
  ┣ 📂 data                     <-- TARUH FILE EXCEL (.xlsx) ANDA DI SINI
  ┣ 📂 chrome_profile_anomali   <-- Folder cache cookies agar tidak perlu login terus
  ┣ 📂 venv                     <-- (Terbuat otomatis) Folder sistem Python internal
- ┣ 📜 run.bat                  <-- KLIK INI UNTUK MENJALANKAN BOT
- ┣ 📜 reject_anomali.py        <-- Script utama mesin Python
- ┣ 📜 processed_links.json     <-- File log riwayat link yang sudah sukses
+ ┣ 📜 run.bat                  <-- KLIK INI UNTUK MENJALANKAN MENU BOT
+ ┣ 📜 run_status_ditemukan.bat <-- Launcher khusus Bot Ubah Status Ditemukan
+ ┣ 📜 reject_anomali.py        <-- Script bot reject anomali
+ ┣ 📜 ubah_status_ditemukan.py <-- Script bot ubah status '1. Ditemukan' & Submit Paksa
+ ┣ 📜 processed_links.json     <-- Log cache bot reject
+ ┣ 📜 processed_status_ditemukan.json <-- Log cache bot ubah status
  ┗ 📜 README.md
 ```
 
 ## 📝 Changelog
+
+### 2026-09-22
+- **Bot Ubah Status ke '1. Ditemukan' & Submit Paksa**:
+  - Menambahkan script baru `ubah_status_ditemukan.py` untuk mengotomatisasi perubahan status keberadaan bangunan usaha dari data Excel (seperti `12. BKU Ditautkan tapi Status Ganda.xlsx`).
+  - Alur otomatisasi: membuka link `/edit`, memilih menu **SE2026 - P**, memilih radio **1. Ditemukan** pada pertanyaan *Keberadaan Bangunan Lainnya/ Usaha*, mengklik tombol **Kirim**, mengklik tombol split dropdown (titik tiga), dan memilih **Submit Paksa**.
+  - Dilengkapi fitur pembacaan data Excel streaming cepat (`read_only=True`) yang mampu memproses puluhan ribu baris data dalam hitungan detik.
+  - Menambahkan fitur filter interaktif per Kabupaten/Kota (`kab`) atau memproses seluruh data.
+  - Menyimpan cache progres secara mandiri pada `processed_status_ditemukan.json`.
+  - Menambahkan launcher khusus `run_status_ditemukan.bat` dan memperbarui `run.bat` dengan menu pilihan interaktif untuk memilih bot yang ingin dijalankan.
 
 ### 2026-08-28
 - **Rekapan Rincian Per Kecamatan**: Menambahkan ringkasan statistik per kecamatan sebelum browser dibuka yang menampilkan kolom Nomor, Nama Kecamatan, Total Link, Jumlah Sudah Diproses (Cache), Sisa yang Akan Diproses, serta Persentase Progress pengerjaan.
