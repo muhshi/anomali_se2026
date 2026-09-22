@@ -44,9 +44,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Bot Ubah Status ke '1. Ditemukan' & Submit Paksa**:
   - Menambahkan script baru `ubah_status_ditemukan.py` untuk mengotomatisasi perubahan status keberadaan bangunan usaha dari data Excel (seperti `12. BKU Ditautkan tapi Status Ganda.xlsx`).
   - Alur otomatisasi: membuka link `/edit`, memilih menu **SE2026 - P**, memilih radio **1. Ditemukan** pada pertanyaan *Keberadaan Bangunan Lainnya/ Usaha*, mengklik tombol **Kirim**, mengklik tombol split dropdown (titik tiga), dan memilih **Submit Paksa**.
-  - Dilengkapi fitur pembacaan data Excel streaming cepat (`read_only=True`) yang mampu memproses puluhan ribu baris data dalam hitungan detik.
+  - Dilengkapi fitur pembacaan data Excel streaming cepat (`read_only=True`) dengan kemampuan mendeteksi filter Excel (AutoFilter / hidden rows) secara instan via XML parser (< 1 detik). Baris yang disembunyikan/di-filter di Excel otomatis dilewati.
   - Menambahkan fitur filter interaktif per Kabupaten/Kota (`kab`) atau memproses seluruh data.
-  - Menyimpan cache progres secara mandiri pada `processed_status_ditemukan.json`.
+  - Menyimpan cache progres secara mandiri pada `processed_status_ditemukan.json` sehingga pengerjaan dapat dilanjutkan kapan saja tanpa mengulang link yang sudah selesai.
   - Menambahkan launcher khusus `run_status_ditemukan.bat` dan memperbarui `run.bat` dengan menu pilihan interaktif untuk memilih bot yang ingin dijalankan.
 
 ### 2026-08-28

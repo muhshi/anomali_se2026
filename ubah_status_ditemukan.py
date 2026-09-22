@@ -6,6 +6,8 @@ import json
 import os
 import random
 import openpyxl
+import zipfile
+import xml.etree.ElementTree as ET
 
 CACHE_FILE = "processed_status_ditemukan.json"
 
@@ -100,9 +102,62 @@ def resolve_bot_detection(page, target_link):
         pass
     return True
 
+def get_hidden_rows(excel_path):
+    """
+    Mendeteksi baris yang disembunyikan (hidden) atau ter-filter (AutoFilter) di Excel
+    secara super cepat langsung dari struktur XML arsip XLSX (< 1 detik).
+    """
+    hidden_rows = set()
+    try:
+        with zipfile.ZipFile(excel_path, "r") as z:
+            # 1. Parse workbook.xml & rels untuk mencari worksheet XML yang tepat
+            wb_xml = ET.fromstring(z.read("xl/workbook.xml"))
+            rels_xml = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+            
+            rel_map = {}
+            for rel in rels_xml:
+                r_id = rel.attrib.get("Id")
+                target = rel.attrib.get("Target")
+                if r_id and target:
+                    if not target.startswith("xl/"):
+                        target = "xl/" + target.lstrip("/")
+                    rel_map[r_id] = target
+            
+            target_xml_path = None
+            ns = {
+                "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+                "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            }
+            
+            sheets = wb_xml.findall(".//main:sheet", ns)
+            for s in sheets:
+                s_name = s.attrib.get("name", "")
+                r_id = s.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+                # Ambil sheet bernama 'data' atau sheet pertama sebagai target
+                if s_name.lower() == "data" or target_xml_path is None:
+                    target_xml_path = rel_map.get(r_id)
+                    if s_name.lower() == "data":
+                        break
+            
+            if target_xml_path and target_xml_path in z.namelist():
+                sheet_tree = ET.fromstring(z.read(target_xml_path))
+                for r in sheet_tree.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}row"):
+                    # Baris tersembunyi jika hidden="1" atau tinggi baris ht="0"
+                    if r.attrib.get("hidden") == "1" or r.attrib.get("ht") == "0":
+                        hidden_rows.add(int(r.attrib["r"]))
+    except Exception as e:
+        print(f"[Info] Deteksi filter XML info: {e}")
+    return hidden_rows
+
 def read_excel_data(excel_path):
-    """Membaca file Excel secara streaming cepat (read_only=True) untuk ribuan baris data."""
+    """Membaca file Excel secara streaming cepat (read_only=True) dengan dukungan filter Excel (AutoFilter / Hidden Rows)."""
     print(f"Membaca file: {os.path.basename(excel_path)} ...")
+    
+    # Deteksi baris yang disembunyikan/difilter di Excel
+    hidden_rows = get_hidden_rows(excel_path)
+    if hidden_rows:
+        print(f"-> Mendeteksi filter Excel aktif: {len(hidden_rows)} baris tersembunyi akan otomatis dilewati.")
+    
     wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
     ws = wb.active
 
@@ -137,6 +192,10 @@ def read_excel_data(excel_path):
             continue
 
         if row_idx <= header_row:
+            continue
+
+        # Lewati baris yang disembunyikan / difilter di Excel
+        if row_idx in hidden_rows:
             continue
 
         raw_link = row[link_col_idx] if len(row) > link_col_idx else None
