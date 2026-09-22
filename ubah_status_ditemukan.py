@@ -554,19 +554,80 @@ def process_single_assignment(page, item):
 
     # 6. Klik tombol titik tiga (split button dropdown) pada modal
     print("  -> Mengklik tombol menu titik tiga (split dropdown) pada modal...")
+    
+    # Tunggu modal muncul dan selesai animasi
+    try:
+        page.locator("[role='dialog'], .modal, div[data-state='open']").first.wait_for(state="visible", timeout=5000)
+    except Exception:
+        pass
+    time.sleep(1)
+
     dots_clicked = False
+
+    def is_menu_open():
+        try:
+            return page.evaluate('''() => {
+                const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] *, div, button, span'));
+                return items.some(el => {
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return t.includes('submit paksa') && el.offsetParent !== null;
+                });
+            }''')
+        except Exception:
+            return False
+
+    split_selectors = [
+        page.locator("button:has(svg path[d*='M12 12m-1'])"),
+        page.locator("button.tw\\:rounded-r-lg, button[class*='rounded-r-lg']"),
+        page.locator("[role='dialog'] button:has(svg path[d*='M12 12m-1'])"),
+        page.locator("[role='dialog'] button.tw\\:rounded-r-lg"),
+        page.locator("[role='dialog'] button:has(svg)")
+    ]
+
     for attempt in range(5):
-        # Cari tombol yang memiliki SVG dengan 3 titik (path M12 12m-1 0a1 1 0 1 0 2 0...) atau kelas tw:rounded-r-lg
-        found_dots = page.evaluate('''() => {
+        if is_menu_open():
+            dots_clicked = True
+            print("     [OK] Menu 'Submit Paksa' sudah muncul.")
+            break
+
+        # 1. Coba klik via Playwright native mouse click pada bounding box tombol
+        clicked_via_pw = False
+        for loc in split_selectors:
+            try:
+                cnt = loc.count()
+                if cnt > 0:
+                    for i in range(cnt):
+                        el = loc.nth(i)
+                        if el.is_visible():
+                            box = el.bounding_box()
+                            if box and box["width"] > 0:
+                                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                                clicked_via_pw = True
+                                break
+                            else:
+                                el.click(timeout=2000, force=True)
+                                clicked_via_pw = True
+                                break
+                    if clicked_via_pw:
+                        break
+            except Exception:
+                pass
+
+        time.sleep(1)
+        if is_menu_open():
+            dots_clicked = True
+            print("     [OK] Menu titik tiga berhasil dibuka via Playwright mouse click.")
+            break
+
+        # 2. Coba klik via JS dengan event simulation lengkap (pointerdown -> mousedown -> click)
+        page.evaluate('''() => {
             const btns = Array.from(document.querySelectorAll('button'));
             
-            // 1. Cari tombol dengan class rounded-r-lg dan bg-primary (split button)
             let target = btns.find(b => {
                 const c = b.className || '';
                 return c.includes('rounded-r-lg') && b.offsetParent !== null;
             });
 
-            // 2. Jika belum ketemu, cari tombol yang memiliki SVG 3 lingkaran/titik (path M12 12m-1 atau M12 5m-1)
             if (!target) {
                 target = btns.find(b => {
                     const svgs = b.querySelectorAll('svg');
@@ -580,67 +641,97 @@ def process_single_assignment(page, item):
                 });
             }
 
-            // 3. Jika belum ketemu, cari tombol di sebelah tombol Kirim/Simpan di dalam modal
             if (!target) {
                 const modal = document.querySelector('[role="dialog"], .modal, div[data-state="open"]');
                 if (modal) {
                     const modalBtns = Array.from(modal.querySelectorAll('button'));
-                    // Biasanya split button adalah tombol kecil di samping tombol aksi utama
                     target = modalBtns.find(b => {
                         const rect = b.getBoundingClientRect();
-                        return rect.width < 50 && rect.height > 20; // tombol ikon kecil
+                        return rect.width > 10 && rect.width < 50 && rect.height > 20;
                     });
                 }
             }
 
             if (target) {
+                target.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = target.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                
+                target.dispatchEvent(new PointerEvent('pointerdown', opts));
+                target.dispatchEvent(new MouseEvent('mousedown', opts));
+                target.dispatchEvent(new PointerEvent('pointerup', opts));
+                target.dispatchEvent(new MouseEvent('mouseup', opts));
                 target.click();
-                return true;
             }
-            return false;
         }''')
 
-        if found_dots:
-            dots_clicked = True
-            break
         time.sleep(1)
-
-    if not dots_clicked:
-        # Coba klik selector CSS langsung
-        try:
-            btn_split = page.locator("button.tw\\:rounded-r-lg, button:has(svg path[d*='M12 12m-1'])").first
-            btn_split.wait_for(state="visible", timeout=3000)
-            btn_split.click()
+        if is_menu_open():
             dots_clicked = True
-        except Exception as e:
-            print(f"  -> [Error] Gagal menemukan tombol titik tiga: {e}")
-            raise Exception("Tombol titik tiga (split dropdown) tidak ditemukan pada modal.")
+            print("     [OK] Menu titik tiga berhasil dibuka via JS event simulation.")
+            break
 
-    time.sleep(1) # Tunggu dropdown menu muncul
+    if not is_menu_open():
+        diag_btns = page.evaluate('''() => {
+            return Array.from(document.querySelectorAll('button')).map(b => ({
+                text: (b.innerText || '').trim(),
+                className: b.className || '',
+                visible: b.offsetParent !== null
+            })).filter(b => b.visible);
+        }''')
+        print(f"  -> [Diagnostic] Daftar tombol terlihat di modal: {diag_btns}")
+        raise Exception("Tombol titik tiga (split dropdown) gagal memunculkan menu 'Submit Paksa'.")
 
     # 7. Klik menu item 'Submit Paksa'
     print("  -> Mengklik 'Submit Paksa'...")
     submit_paksa_clicked = False
-    for attempt in range(5):
+
+    paksa_locators = [
+        page.locator("[role='menuitem']").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE)),
+        page.get_by_text(re.compile(r"^Submit Paksa$", re.IGNORECASE)),
+        page.locator("div, button, a, span").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE))
+    ]
+
+    for loc in paksa_locators:
         try:
-            menu_item = page.locator("[role='menuitem'], div, button").filter(
-                has_text=re.compile(r"Submit Paksa", re.IGNORECASE)
-            ).first
-            if menu_item.is_visible():
-                menu_item.click(timeout=3000)
-                submit_paksa_clicked = True
+            cnt = loc.count()
+            if cnt > 0:
+                for i in range(cnt):
+                    el = loc.nth(i)
+                    if el.is_visible():
+                        box = el.bounding_box()
+                        if box:
+                            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        else:
+                            el.click(timeout=2000, force=True)
+                        submit_paksa_clicked = True
+                        print("     [OK] Berhasil mengklik 'Submit Paksa' via Playwright.")
+                        break
+            if submit_paksa_clicked:
                 break
         except Exception:
             pass
 
-        # Fallback JS klik Submit Paksa
+    if not submit_paksa_clicked:
         found_paksa_js = page.evaluate('''() => {
             const items = Array.from(document.querySelectorAll('[role="menuitem"], div, button, span'));
             const target = items.find(el => {
                 const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                return t.includes('submit paksa');
+                return t.includes('submit paksa') && el.offsetParent !== null;
             });
             if (target) {
+                target.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = target.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                
+                target.dispatchEvent(new PointerEvent('pointerdown', opts));
+                target.dispatchEvent(new MouseEvent('mousedown', opts));
+                target.dispatchEvent(new PointerEvent('pointerup', opts));
+                target.dispatchEvent(new MouseEvent('mouseup', opts));
                 target.click();
                 return true;
             }
@@ -648,8 +739,7 @@ def process_single_assignment(page, item):
         }''')
         if found_paksa_js:
             submit_paksa_clicked = True
-            break
-        time.sleep(1)
+            print("     [OK] Berhasil mengklik 'Submit Paksa' via JS simulation.")
 
     if not submit_paksa_clicked:
         raise Exception("Gagal mengklik menu 'Submit Paksa'.")

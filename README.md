@@ -49,6 +49,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Menyimpan cache progres secara mandiri pada `processed_status_ditemukan.json` sehingga pengerjaan dapat dilanjutkan kapan saja tanpa mengulang link yang sudah selesai.
   - Menambahkan launcher khusus `run_status_ditemukan.bat` dan memperbarui `run.bat` dengan menu pilihan interaktif untuk memilih bot yang ingin dijalankan.
   - **Fix Klik Menu SE2026 - P & Pemilihan Radio 1. Ditemukan**: Memperbaiki selector menu tab agar tidak mengklik generic container `div`, menggunakan koordinat mouse click dan JS deep event simulation, menambahkan verifikasi render form sebelum memilih opsi, serta pencarian radio input `value="1"` langsung.
+  - **Fix Tombol Titik Tiga Modal & Submit Paksa**: Mengganti event click tombol split dropdown dengan Playwright native mouse click dan simulasi event `pointerdown` + `mousedown` lengkap (dibutuhkan komponen Radix UI/Tailwind) serta verifikasi terbukanya menu item 'Submit Paksa'.
 
 ### 2026-08-28
 - **Rekapan Rincian Per Kecamatan**: Menambahkan ringkasan statistik per kecamatan sebelum browser dibuka yang menampilkan kolom Nomor, Nama Kecamatan, Total Link, Jumlah Sudah Diproses (Cache), Sisa yang Akan Diproses, serta Persentase Progress pengerjaan.
