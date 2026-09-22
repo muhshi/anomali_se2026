@@ -301,91 +301,177 @@ def process_single_assignment(page, item):
     # 3. Klik menu 'SE2026 - P'
     print("  -> Mencari dan mengklik menu 'SE2026 - P'...")
     menu_clicked = False
-    for _ in range(5):
+
+    def is_se2026_rendered():
         try:
-            # Coba cari elemen dengan teks SE2026 - P atau variasi spasi
-            menu_btn = page.locator("button, a, div, [role='tab']").filter(
-                has_text=re.compile(r"SE2026\s*-\s*P", re.IGNORECASE)
-            ).first
-            if menu_btn.is_visible():
-                menu_btn.click(timeout=5000)
-                menu_clicked = True
-                break
+            return page.evaluate('''() => {
+                const text = (document.body.innerText || '').toLowerCase();
+                return text.includes("keberadaan bangunan") || text.includes("1. ditemukan") || text.includes("tidak ditemukan");
+            }''')
         except Exception:
-            pass
+            return False
 
-        # Fallback pencarian via JavaScript
-        found_js = page.evaluate('''() => {
-            const allElements = Array.from(document.querySelectorAll('button, a, div[role="tab"], span, li, div'));
-            const target = allElements.find(el => {
-                const txt = (el.innerText || el.textContent || '').trim();
-                return /SE2026\s*-\s*P/i.test(txt) && el.children.length <= 2;
-            });
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                target.click();
-                return true;
-            }
-            return false;
-        }''')
-        if found_js:
-            menu_clicked = True
-            break
-        time.sleep(1)
+    # Jika form sudah menampilkan pertanyaan SE2026 - P, tidak perlu klik ulang
+    if is_se2026_rendered():
+        print("     [OK] Form 'SE2026 - P' sudah aktif/terbuka.")
+        menu_clicked = True
+    else:
+        pattern = re.compile(r"SE2026\s*[-–—]?\s*P", re.IGNORECASE)
+        exact_pattern = re.compile(r"^\s*SE2026\s*[-–—]?\s*P\s*$", re.IGNORECASE)
 
-    if not menu_clicked:
-        print("  -> [Warning] Menu 'SE2026 - P' tidak ditemukan via selector standar. Mencoba lanjut...")
+        # Strategi 1: Cari dengan selector Playwright presisi (tanpa generic div!)
+        candidates = [
+            page.get_by_role("tab", name=pattern),
+            page.get_by_role("link", name=pattern),
+            page.get_by_role("button", name=pattern),
+            page.get_by_text(exact_pattern),
+            page.locator("a, button, [role='tab'], [role='menuitem'], [role='treeitem'], li").filter(has_text=pattern),
+            page.locator("[title*='SE2026 - P'], [title*='SE2026-P'], [title*='SE2026']"),
+            page.get_by_text(pattern)
+        ]
 
-    time.sleep(1.5) # Tunggu pertanyaan ter-render
+        for cand in candidates:
+            try:
+                cnt = cand.count()
+                if cnt > 0:
+                    target_el = None
+                    for c_i in range(cnt):
+                        el = cand.nth(c_i)
+                        if el.is_visible():
+                            target_el = el
+                            break
+                    
+                    if target_el:
+                        target_el.scroll_into_view_if_needed(timeout=2000)
+                        box = target_el.bounding_box()
+                        if box:
+                            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        else:
+                            target_el.click(timeout=3000)
+                        
+                        time.sleep(1.5)
+                        if is_se2026_rendered():
+                            menu_clicked = True
+                            print("     [OK] Berhasil berpindah ke menu 'SE2026 - P' via Playwright.")
+                            break
+            except Exception:
+                pass
+
+        # Strategi 2: JS Deep Click (Cari leaf node terdalam, scroll, dan dispatch pointer+mouse events)
+        if not menu_clicked:
+            js_clicked = page.evaluate('''() => {
+                const all = Array.from(document.querySelectorAll('*'));
+                const matches = all.filter(el => {
+                    const txt = (el.innerText || el.textContent || '').trim();
+                    return /SE2026\s*[-–—]?\s*P/i.test(txt);
+                });
+                
+                if (matches.length === 0) return { success: false, reason: 'not_found' };
+
+                // Urutkan dari elemen dengan teks terpendek (elemen terdalam / leaf)
+                matches.sort((a, b) => {
+                    const aLen = (a.innerText || a.textContent || '').trim().length;
+                    const bLen = (b.innerText || b.textContent || '').trim().length;
+                    return aLen - bLen;
+                });
+
+                const leaf = matches[0];
+                const clickable = leaf.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || leaf;
+                
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                
+                const rect = clickable.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+                
+                clickable.dispatchEvent(new PointerEvent('pointerdown', opts));
+                clickable.dispatchEvent(new MouseEvent('mousedown', opts));
+                clickable.dispatchEvent(new PointerEvent('pointerup', opts));
+                clickable.dispatchEvent(new MouseEvent('mouseup', opts));
+                clickable.click();
+                
+                return {
+                    success: true,
+                    tag: clickable.tagName,
+                    text: (clickable.innerText || clickable.textContent || '').trim().substring(0, 30)
+                };
+            }''')
+
+            if js_clicked and js_clicked.get("success"):
+                time.sleep(2)
+                if is_se2026_rendered():
+                    menu_clicked = True
+                    print(f"     [OK] Berhasil berpindah ke menu 'SE2026 - P' via JS deep click ({js_clicked.get('tag')}).")
+
+        # Strategi 3: Tunggu render tambahan jika aplikasi butuh waktu memuat form
+        if not menu_clicked:
+            for _ in range(3):
+                time.sleep(1)
+                if is_se2026_rendered():
+                    menu_clicked = True
+                    break
+
+        if not menu_clicked:
+            print("  -> [Warning] Tampilan belum terkonfirmasi berubah ke form 'SE2026 - P'. Mencoba mencari opsi pertanyaan...")
+
+    time.sleep(1) # Beri jeda form stabil
 
     # 4. Pilih opsi '1. Ditemukan'
     print("  -> Memilih opsi '1. Ditemukan' pada Keberadaan Bangunan Lainnya/ Usaha...")
     option_selected = False
-    
-    # Pendekatan JS terstruktur: cari section/pertanyaan lalu klik opsi 1. Ditemukan
+
+    # Tunggu beberapa saat jika form sedang proses rendering
+    for _ in range(8):
+        if page.evaluate('''() => {
+            const body = (document.body.innerText || '').toLowerCase();
+            return body.includes('1. ditemukan') || body.includes('ditemukan');
+        }'''):
+            break
+        time.sleep(0.5)
+
+    # Coba pendekatan JS cerdas
     select_result = page.evaluate('''() => {
-        // Fungsi pembantu untuk klik elemen
-        function simulateClick(el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.click();
+        function triggerChange(el) {
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // 1. Cari container pertanyaan Keberadaan Bangunan Lainnya/ Usaha
-        const allElements = Array.from(document.querySelectorAll('div, section, fieldset, form'));
-        const questionContainer = allElements.find(el => {
-            const text = (el.innerText || el.textContent || '').toLowerCase();
-            return text.includes('keberadaan bangunan') && text.includes('ditemukan');
-        });
-
-        const rootSearch = questionContainer || document;
-
-        // Cari radio button, label, atau button dengan teks '1. Ditemukan'
-        const candidateItems = Array.from(rootSearch.querySelectorAll('label, div, span, button, [role="radio"]'));
-        const targetOption = candidateItems.find(el => {
-            const text = (el.innerText || el.textContent || '').trim();
-            // Cocokkan teks '1. Ditemukan'
-            return /^1\.\s*ditemukan/i.test(text) || text.toLowerCase() === '1. ditemukan' || text.toLowerCase() === '1.ditemukan';
-        });
-
-        if (targetOption) {
-            // Cek apakah di dalam target ada input radio
-            const inputRadio = targetOption.querySelector('input[type="radio"]') || targetOption.closest('label')?.querySelector('input[type="radio"]');
-            if (inputRadio) {
-                simulateClick(inputRadio);
-                return { success: true, method: 'radio_input' };
-            }
-            simulateClick(targetOption);
-            return { success: true, method: 'label_or_text' };
-        }
-
-        // Fallback: cari input radio dengan value="1" di dalam form
-        const radios = Array.from(rootSearch.querySelectorAll('input[type="radio"]'));
+        const allElements = Array.from(document.querySelectorAll('*'));
+        
+        // 1. Cari radio input dengan value="1"
+        const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
         const radioOne = radios.find(r => r.value === '1' || r.value === '1. Ditemukan');
         if (radioOne) {
-            simulateClick(radioOne);
-            return { success: true, method: 'radio_value_1' };
+            radioOne.scrollIntoView({ behavior: 'instant', block: 'center' });
+            radioOne.click();
+            radioOne.checked = true;
+            triggerChange(radioOne);
+            const parentLabel = radioOne.closest('label');
+            if (parentLabel) parentLabel.click();
+            return { success: true, method: 'radio_input_val_1' };
+        }
+
+        // 2. Cari elemen teks yang mengandung "1. Ditemukan"
+        const foundTexts = allElements.filter(el => {
+            const t = (el.innerText || el.textContent || '').trim();
+            return /^1\.\s*ditemukan/i.test(t);
+        });
+
+        if (foundTexts.length > 0) {
+            foundTexts.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
+            const targetEl = foundTexts[0];
+            const clickable = targetEl.closest('label, div[role="radio"], button, tr, div') || targetEl;
+            
+            clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+            clickable.click();
+            
+            const innerRadio = clickable.querySelector('input[type="radio"]');
+            if (innerRadio) {
+                innerRadio.checked = true;
+                triggerChange(innerRadio);
+            }
+            return { success: true, method: 'label_or_text_click' };
         }
 
         return { success: false };
@@ -395,16 +481,38 @@ def process_single_assignment(page, item):
         option_selected = True
         print(f"     [OK] Berhasil memilih '1. Ditemukan' ({select_result.get('method')})")
     else:
-        # Fallback Playwright locator
-        try:
-            loc = page.locator("label, div, span, button").filter(has_text=re.compile(r"^1\.\s*Ditemukan", re.IGNORECASE)).first
-            loc.wait_for(state="visible", timeout=5000)
-            loc.click(timeout=5000)
-            option_selected = True
-            print("     [OK] Berhasil memilih '1. Ditemukan' via Playwright fallback.")
-        except Exception as e:
-            print(f"  -> [Error] Gagal menemukan opsi '1. Ditemukan': {e}")
-            raise Exception("Gagal memilih '1. Ditemukan' pada form.")
+        # Fallback Playwright
+        playwright_selectors = [
+            page.get_by_role("radio", name=re.compile(r"1\.\s*Ditemukan", re.IGNORECASE)),
+            page.get_by_label(re.compile(r"1\.\s*Ditemukan", re.IGNORECASE)),
+            page.locator("label").filter(has_text=re.compile(r"1\.\s*Ditemukan", re.IGNORECASE)),
+            page.locator("div, span, button").filter(has_text=re.compile(r"^1\.\s*Ditemukan", re.IGNORECASE))
+        ]
+        for sel in playwright_selectors:
+            try:
+                if sel.count() > 0 and sel.first.is_visible():
+                    sel.first.scroll_into_view_if_needed(timeout=2000)
+                    box = sel.first.bounding_box()
+                    if box:
+                        page.mouse.click(box["x"] + 10, box["y"] + box["height"] / 2)
+                    else:
+                        sel.first.click(timeout=3000)
+                    option_selected = True
+                    print("     [OK] Berhasil memilih '1. Ditemukan' via Playwright fallback.")
+                    break
+            except Exception:
+                pass
+
+    if not option_selected:
+        diag_info = page.evaluate('''() => {
+            const titles = Array.from(document.querySelectorAll('h1, h2, h3, h4, [role="tab"], button'))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t.length > 0 && t.length < 40)
+                .slice(0, 15);
+            return { currentUrl: window.location.href, titles: titles };
+        }''')
+        print(f"  -> [Diagnostic] Elemen di halaman saat ini: {diag_info}")
+        raise Exception("Gagal memilih '1. Ditemukan' pada form.")
 
     time.sleep(1)
 
