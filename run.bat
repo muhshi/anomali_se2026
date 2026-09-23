@@ -95,16 +95,18 @@ exit /b
 echo [Info] Menggunakan Python: %PY_CMD%
 
 :: 5. Virtual Environment
-if exist "venv\Scripts\python.exe" (
-    venv\Scripts\python.exe -c "import sys" >nul 2>&1
-    if %errorlevel% equ 0 goto VENV_OK
-    echo [Peringatan] Virtual environment (venv) lama tidak valid atau berasal dari PC lain.
-    echo Menghapus venv dan membuat ulang khusus untuk PC ini...
-    rd /s /q "venv" >nul 2>&1
-)
+if not exist "venv\Scripts\python.exe" goto CREATE_VENV
 
+"venv\Scripts\python.exe" -c "import sys" >nul 2>&1
+if %errorlevel% equ 0 goto VENV_OK
+
+echo [Peringatan] Virtual environment venv lama tidak valid atau berasal dari PC lain.
+echo Menghapus venv dan membuat ulang khusus untuk PC ini...
+rd /s /q "venv" >nul 2>&1
+
+:CREATE_VENV
 echo.
-echo Membuat Virtual Environment (venv)...
+echo Membuat Virtual Environment venv...
 "%PY_CMD%" -m venv venv
 
 :VENV_OK
@@ -122,7 +124,7 @@ echo ====================================================
 echo PILIH BOT YANG INGIN DIJALANKAN:
 echo ====================================================
 echo [1] Bot Reject Anomali (reject_anomali.py)
-echo [2] Bot Ubah Status Ditemukan & Submit Paksa (ubah_status_ditemukan.py)
+echo [2] Bot Ubah Status Ditemukan ^& Submit Paksa (ubah_status_ditemukan.py)
 echo ====================================================
 set /p BOT_CHOICE="Pilih nomor [1/2] (Default: 1): "
 

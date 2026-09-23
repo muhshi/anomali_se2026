@@ -1,5 +1,5 @@
 @echo off
-title Bot Ubah Status Anomali ke Ditemukan & Submit Paksa - Fasih-SM BPS
+title Bot Ubah Status Anomali ke Ditemukan ^& Submit Paksa - Fasih-SM BPS
 
 echo ====================================================
 echo   AUTO-INSTALLER ^& RUNNER - UBAH STATUS DITEMUKAN
@@ -95,16 +95,18 @@ exit /b
 echo [Info] Menggunakan Python: %PY_CMD%
 
 :: 5. Virtual Environment
-if exist "venv\Scripts\python.exe" (
-    venv\Scripts\python.exe -c "import sys" >nul 2>&1
-    if %errorlevel% equ 0 goto VENV_OK
-    echo [Peringatan] Virtual environment (venv) lama tidak valid atau berasal dari PC lain.
-    echo Menghapus venv dan membuat ulang khusus untuk PC ini...
-    rd /s /q "venv" >nul 2>&1
-)
+if not exist "venv\Scripts\python.exe" goto CREATE_VENV
 
+"venv\Scripts\python.exe" -c "import sys" >nul 2>&1
+if %errorlevel% equ 0 goto VENV_OK
+
+echo [Peringatan] Virtual environment venv lama tidak valid atau berasal dari PC lain.
+echo Menghapus venv dan membuat ulang khusus untuk PC ini...
+rd /s /q "venv" >nul 2>&1
+
+:CREATE_VENV
 echo.
-echo Membuat Virtual Environment (venv)...
+echo Membuat Virtual Environment venv...
 "%PY_CMD%" -m venv venv
 
 :VENV_OK

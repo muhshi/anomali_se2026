@@ -41,12 +41,18 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-09-23
+- **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:
+  - Memperbaiki parsing karakter khusus `&` pada baris menu `run.bat` dan `title` pada `run_status_ditemukan.bat` yang sebelumnya menyebabkan command prompt langsung *force close* (crash) seketika saat dibuka di komputer lain.
+  - Memperbaiki penanganan validasi virtual environment `(venv)` menggunakan label alur `goto` agar aman dari error sintaks parser batch Windows CMD (`... was unexpected at this time`).
+  - Menambahkan pengecekan otomatis validitas virtual environment: jika folder dicopy dari PC lain dengan path Python berbeda, runner akan otomatis membersihkan dan membuat ulang `venv` yang kompatibel dengan PC tersebut.
+- **Eliminasi Ketergantungan Pandas & Standalone Auto-Installer**:
+  - Menghapus ketergantungan `pandas` pada `ubah_status_ditemukan.py` dan menggantinya dengan `openpyxl` murni untuk pembacaan data dan pembuatan laporan rekapitulasi Excel.
+  - Menambahkan auto-installer dependencies langsung pada script Python (`ubah_status_ditemukan.py`) sehingga script dapat dieksekusi secara mandiri/standalone di terminal maupun VS Code.
 - **Deteksi Peringatan Usaha Sudah Diganti & Auto-Reporting**:
   - Menambahkan deteksi otomatis peringatan bahwa usaha pernah ditautkan namun sudah diganti pada keluarga tersebut sehingga assignment tidak ditemukan lagi.
   - Melewati (skip) assignment yang memuat peringatan tersebut secara otomatis tanpa membuang waktu mencoba mengubah status atau submit paksa.
   - Menyimpan data riwayat pemrosesan lengkap ke file rekap laporan **`laporan_status_ditemukan.xlsx`** dan **`laporan_status_ditemukan.json`** yang mencatat status "BERHASIL", "SKIP - USAHA SUDAH DIGANTI", dan "SKIP - BUKAN OTORISASI" beserta pesan sistemnya.
   - Menyimpan link yang di-skip ke cache agar tidak dikerjakan ulang pada eksekusi berikutnya.
-  - **Eliminasi Ketergantungan Pandas & Portabilitas PC**: Menghapus dependency `pandas` pada `ubah_status_ditemukan.py` dan menggantinya dengan `openpyxl` murni untuk export laporan Excel, menambahkan auto-installer dependencies saat script dijalankan langsung, serta menambahkan validasi otomatis virtualenv pada `run.bat` dan `run_status_ditemukan.bat` (mendeteksi dan mereset venv jika folder dicopy dari PC lain).
 
 ### 2026-09-22
 - **Bot Ubah Status ke '1. Ditemukan' & Submit Paksa**:
