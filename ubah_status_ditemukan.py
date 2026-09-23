@@ -10,6 +10,8 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 CACHE_FILE = "processed_status_ditemukan.json"
+REPORT_JSON = "laporan_status_ditemukan.json"
+REPORT_EXCEL = "laporan_status_ditemukan.xlsx"
 
 def load_cache():
     if os.path.exists(CACHE_FILE):
@@ -23,6 +25,54 @@ def load_cache():
 def save_cache(cache_set):
     with open(CACHE_FILE, "w") as f:
         json.dump(list(cache_set), f, indent=4)
+
+def load_reports():
+    if os.path.exists(REPORT_JSON):
+        try:
+            with open(REPORT_JSON, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_report(reports_list):
+    try:
+        with open(REPORT_JSON, "w", encoding="utf-8") as f:
+            json.dump(reports_list, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"  -> Error menyimpan report JSON: {e}")
+    try:
+        if reports_list:
+            df = pd.DataFrame(reports_list)
+            df.to_excel(REPORT_EXCEL, index=False)
+    except Exception as e:
+        pass
+
+def check_usaha_sudah_diganti(page):
+    """
+    Mengecek apakah terdapat peringatan bahwa usaha ini pernah ditautkan tetapi sudah diganti dengan yang lain,
+    sehingga saat ini tidak ditemukan lagi pada keluarga tersebut.
+    """
+    try:
+        res = page.evaluate('''() => {
+            const bodyText = (document.body.innerText || '').toLowerCase();
+            const hasKeyword1 = bodyText.includes('pernah ditautkan') || bodyText.includes('ditautkan pada usaha');
+            const hasKeyword2 = bodyText.includes('sudah diganti') || bodyText.includes('tidak ditemukan lagi pada keluarga') || bodyText.includes('tidak ditemukan lagi');
+            
+            if (hasKeyword1 && hasKeyword2) {
+                const allElements = Array.from(document.querySelectorAll('div, p, span, [role="alert"], .alert'));
+                const alertEl = allElements.find(el => {
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return t.includes('pernah ditautkan') && (t.includes('sudah diganti') || t.includes('tidak ditemukan lagi'));
+                });
+                const fullText = alertEl ? alertEl.innerText.trim() : "Usaha ini pernah ditautkan pada usaha keluarga, namun usaha yang ditautkan sudah diganti sehingga saat ini tidak ditemukan lagi pada keluarga tersebut.";
+                return { detected: true, message: fullText };
+            }
+            return { detected: false, message: "" };
+        }''')
+        return res.get("detected", False), res.get("message", "")
+    except Exception:
+        return False, ""
 
 def check_is_bot_or_blocked(page):
     """Mengecek apakah halaman saat ini menunjukkan pesan terdeteksi bot, WAF, atau error SSO."""
@@ -296,7 +346,12 @@ def process_single_assignment(page, item):
     current_url = page.url
     if "/edit" not in current_url:
         print(f"  -> [SKIP] Browser dialihkan ke {current_url}. Bukan wilayah tugas Anda / form terkunci.")
-        return "SKIP_NOT_AUTHORIZED"
+        return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
+
+    # Cek apakah ada peringatan usaha sudah diganti
+    is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+    if is_diganti:
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
 
     # 3. Klik menu 'SE2026 - P'
     print("  -> Mencari dan mengklik menu 'SE2026 - P'...")
@@ -416,6 +471,11 @@ def process_single_assignment(page, item):
             print("  -> [Warning] Tampilan belum terkonfirmasi berubah ke form 'SE2026 - P'. Mencoba mencari opsi pertanyaan...")
 
     time.sleep(1) # Beri jeda form stabil
+
+    # Cek apakah ada peringatan bahwa usaha sudah diganti pada form SE2026 - P
+    is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+    if is_diganti:
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
 
     # 4. Pilih opsi '1. Ditemukan'
     print("  -> Memilih opsi '1. Ditemukan' pada Keberadaan Bangunan Lainnya/ Usaha...")
@@ -674,6 +734,11 @@ def process_single_assignment(page, item):
             break
 
     if not is_menu_open():
+        # Cek apakah ada peringatan usaha sudah diganti yang baru terdeteksi
+        is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+        if is_diganti:
+            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
+
         diag_btns = page.evaluate('''() => {
             return Array.from(document.querySelectorAll('button')).map(b => ({
                 text: (b.innerText || '').trim(),
@@ -763,7 +828,7 @@ def process_single_assignment(page, item):
         pass
 
     time.sleep(2.5) # Tunggu pengiriman selesai ke server Fasih
-    return "SUCCESS"
+    return "SUCCESS", "Status diubah ke Ditemukan & Submit Paksa sukses"
 
 def main():
     print("="*65)
@@ -856,9 +921,22 @@ def main():
         print("="*65)
         input("Tekan ENTER di terminal ini jika sudah siap memulai proses...")
 
+        reports_data = load_reports()
+        report_link_map = {r.get("link"): idx for idx, r in enumerate(reports_data)}
+
+        def append_or_update_report(item_data):
+            link = item_data.get("link")
+            if link in report_link_map:
+                reports_data[report_link_map[link]] = item_data
+            else:
+                report_link_map[link] = len(reports_data)
+                reports_data.append(item_data)
+            save_report(reports_data)
+
         total_target = len(active_data)
         success_count = 0
         skip_count = 0
+        skip_diganti_count = 0
         fail_count = 0
 
         for idx, item in enumerate(active_data, 1):
@@ -873,17 +951,52 @@ def main():
             print(f"[{idx}/{total_target}] [Kab {kab}] Memproses: {nama} ({link})")
 
             try:
-                status = process_single_assignment(page, item)
+                status, msg = process_single_assignment(page, item)
                 
                 if status == "SUCCESS":
                     processed_cache.add(link)
                     save_cache(processed_cache)
                     success_count += 1
+                    append_or_update_report({
+                        "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "kab": kab,
+                        "nama": nama,
+                        "link": link,
+                        "status": "BERHASIL",
+                        "keterangan": "Status diubah ke Ditemukan & Submit Paksa sukses",
+                        "detail_pesan": msg
+                    })
                     print(f"  -> [BERHASIL] Status diubah ke Ditemukan & Submit Paksa sukses!")
+                
+                elif status == "SKIP_USAHA_SUDAH_DIGANTI":
+                    processed_cache.add(link)
+                    save_cache(processed_cache)
+                    skip_diganti_count += 1
+                    append_or_update_report({
+                        "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "kab": kab,
+                        "nama": nama,
+                        "link": link,
+                        "status": "SKIP - USAHA SUDAH DIGANTI",
+                        "keterangan": "Usaha sudah diganti dengan yang lain, jadi assignment ini tidak ditemukan",
+                        "detail_pesan": msg
+                    })
+                    print(f"  -> [SKIP] Usaha sudah diganti dengan yang lain (assignment tidak ditemukan).")
+                    print(f"     Pesan: {msg}")
+
                 elif status == "SKIP_NOT_AUTHORIZED":
                     processed_cache.add(link)
                     save_cache(processed_cache)
                     skip_count += 1
+                    append_or_update_report({
+                        "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "kab": kab,
+                        "nama": nama,
+                        "link": link,
+                        "status": "SKIP - BUKAN OTORISASI",
+                        "keterangan": "Bukan wilayah tugas Anda / form terkunci",
+                        "detail_pesan": msg
+                    })
                     print(f"  -> [SKIP] Ditandai di cache (Bukan otorisasi Anda).")
 
             except Exception as e:
@@ -907,9 +1020,11 @@ def main():
 
         print("\n" + "="*65)
         print(" PROSES OTOMATISASI SELESAI!")
-        print(f" - Sukses Diproses  : {success_count}")
-        print(f" - Dilewati (Skip)  : {skip_count}")
-        print(f" - Gagal/Error      : {fail_count}")
+        print(f" - Sukses Diproses           : {success_count}")
+        print(f" - Usaha Sudah Diganti (Skip): {skip_diganti_count}")
+        print(f" - Bukan Otorisasi (Skip)    : {skip_count}")
+        print(f" - Gagal/Error               : {fail_count}")
+        print(f" - File Laporan Rekap        : {REPORT_EXCEL} & {REPORT_JSON}")
         print("="*65)
         context.close()
 

@@ -40,6 +40,13 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-09-23
+- **Deteksi Peringatan Usaha Sudah Diganti & Auto-Reporting**:
+  - Menambahkan deteksi otomatis peringatan bahwa usaha pernah ditautkan namun sudah diganti pada keluarga tersebut sehingga assignment tidak ditemukan lagi.
+  - Melewati (skip) assignment yang memuat peringatan tersebut secara otomatis tanpa membuang waktu mencoba mengubah status atau submit paksa.
+  - Menyimpan data riwayat pemrosesan lengkap ke file rekap laporan **`laporan_status_ditemukan.xlsx`** dan **`laporan_status_ditemukan.json`** yang mencatat status "BERHASIL", "SKIP - USAHA SUDAH DIGANTI", dan "SKIP - BUKAN OTORISASI" beserta pesan sistemnya.
+  - Menyimpan link yang di-skip ke cache agar tidak dikerjakan ulang pada eksekusi berikutnya.
+
 ### 2026-09-22
 - **Bot Ubah Status ke '1. Ditemukan' & Submit Paksa**:
   - Menambahkan script baru `ubah_status_ditemukan.py` untuk mengotomatisasi perubahan status keberadaan bangunan usaha dari data Excel (seperti `12. BKU Ditautkan tapi Status Ganda.xlsx`).
