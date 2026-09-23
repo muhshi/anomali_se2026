@@ -46,6 +46,7 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Melewati (skip) assignment yang memuat peringatan tersebut secara otomatis tanpa membuang waktu mencoba mengubah status atau submit paksa.
   - Menyimpan data riwayat pemrosesan lengkap ke file rekap laporan **`laporan_status_ditemukan.xlsx`** dan **`laporan_status_ditemukan.json`** yang mencatat status "BERHASIL", "SKIP - USAHA SUDAH DIGANTI", dan "SKIP - BUKAN OTORISASI" beserta pesan sistemnya.
   - Menyimpan link yang di-skip ke cache agar tidak dikerjakan ulang pada eksekusi berikutnya.
+  - **Eliminasi Ketergantungan Pandas & Portabilitas PC**: Menghapus dependency `pandas` pada `ubah_status_ditemukan.py` dan menggantinya dengan `openpyxl` murni untuk export laporan Excel, menambahkan auto-installer dependencies saat script dijalankan langsung, serta menambahkan validasi otomatis virtualenv pada `run.bat` dan `run_status_ditemukan.bat` (mendeteksi dan mereset venv jika folder dicopy dari PC lain).
 
 ### 2026-09-22
 - **Bot Ubah Status ke '1. Ditemukan' & Submit Paksa**:

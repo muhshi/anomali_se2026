@@ -95,7 +95,13 @@ exit /b
 echo [Info] Menggunakan Python: %PY_CMD%
 
 :: 5. Virtual Environment
-if exist "venv\Scripts\activate.bat" goto VENV_OK
+if exist "venv\Scripts\python.exe" (
+    venv\Scripts\python.exe -c "import sys" >nul 2>&1
+    if %errorlevel% equ 0 goto VENV_OK
+    echo [Peringatan] Virtual environment (venv) lama tidak valid atau berasal dari PC lain.
+    echo Menghapus venv dan membuat ulang khusus untuk PC ini...
+    rd /s /q "venv" >nul 2>&1
+)
 
 echo.
 echo Membuat Virtual Environment (venv)...
@@ -106,10 +112,10 @@ echo Mengaktifkan Virtual Environment...
 call venv\Scripts\activate.bat
 
 echo.
-echo Memeriksa dan menginstall library (pandas, openpyxl, playwright)...
+echo Memeriksa dan menginstall library (openpyxl, playwright, pandas)...
 python -m pip install --upgrade pip
-pip install pandas openpyxl playwright
-playwright install chromium
+python -m pip install openpyxl playwright pandas
+python -m playwright install chromium
 
 echo.
 echo ====================================================

@@ -1,4 +1,25 @@
-import pandas as pd
+import sys
+import subprocess
+
+# Auto-install dependencies jika script dijalankan langsung tanpa venv
+required_modules = ["openpyxl", "playwright"]
+missing_modules = []
+for mod in required_modules:
+    try:
+        __import__(mod)
+    except ImportError:
+        missing_modules.append(mod)
+
+if missing_modules:
+    print(f"[Info] Modul belum lengkap ({', '.join(missing_modules)}). Menginstall otomatis...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing_modules])
+        if "playwright" in missing_modules:
+            subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium"])
+        print("[Info] Instalasi dependencies selesai!")
+    except Exception as e:
+        print(f"[Peringatan] Gagal auto-install modul: {e}")
+
 from playwright.sync_api import sync_playwright
 import re
 import time
@@ -43,8 +64,14 @@ def save_report(reports_list):
         print(f"  -> Error menyimpan report JSON: {e}")
     try:
         if reports_list:
-            df = pd.DataFrame(reports_list)
-            df.to_excel(REPORT_EXCEL, index=False)
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Laporan"
+            headers = list(reports_list[0].keys())
+            ws.append(headers)
+            for item in reports_list:
+                ws.append([item.get(h, "") for h in headers])
+            wb.save(REPORT_EXCEL)
     except Exception as e:
         pass
 
