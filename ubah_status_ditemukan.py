@@ -863,41 +863,73 @@ def main():
     print(" Fasih-SM BPS (SE2026)")
     print("="*65)
 
+def get_bku_excel_files(base_data_dir):
+    """
+    Mencari file Excel untuk BKU Ditautkan / Ubah Status:
+    1. Cek folder data/BKU Ditautkan terlebih dahulu.
+    2. Jika tidak ada / kosong, cek folder data/ utama (filter file yang terkait BKU / status dan bukan anomali/laporan).
+    """
+    bku_subdir = os.path.join(base_data_dir, "BKU Ditautkan")
+    files_with_path = []
+    
+    if os.path.exists(bku_subdir):
+        sub_files = [
+            f for f in os.listdir(bku_subdir) 
+            if f.endswith(".xlsx") and not f.startswith("~$") and "laporan" not in f.lower()
+        ]
+        if sub_files:
+            for f in sub_files:
+                files_with_path.append((f, os.path.join(bku_subdir, f)))
+            return files_with_path
+
+    # Fallback ke folder data utama jika di subfolder tidak ada file
+    root_files = [
+        f for f in os.listdir(base_data_dir) 
+        if f.endswith(".xlsx") and not f.startswith("~$") 
+        and "laporan" not in f.lower() 
+        and "anomali" not in f.lower()
+    ]
+    for f in root_files:
+        files_with_path.append((f, os.path.join(base_data_dir, f)))
+        
+    return files_with_path
+
+def main():
     data_dir = os.path.join(os.getcwd(), "data")
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
         print(f"Folder 'data' telah dibuat di {data_dir}")
-        print("Silakan masukkan file Excel anomali ke folder 'data' lalu jalankan ulang.")
+        print("Silakan masukkan file Excel BKU ke folder 'data/BKU Ditautkan' atau 'data'.")
         return
 
-    excel_files = [f for f in os.listdir(data_dir) if f.endswith(".xlsx") and not f.startswith("~$")]
-    if not excel_files:
-        print("TIDAK ADA FILE EXCEL DITEMUKAN di folder 'data'!")
-        print(f"Silakan letakkan file Excel Anda di: {data_dir}")
+    excel_items = get_bku_excel_files(data_dir)
+    if not excel_items:
+        print("TIDAK ADA FILE EXCEL BKU DITEMUKAN!")
+        print(f"Silakan letakkan file Excel BKU (.xlsx) di folder: {os.path.join(data_dir, 'BKU Ditautkan')} atau {data_dir}")
         return
 
     # Prioritaskan file '12. BKU Ditautkan tapi Status Ganda.xlsx' jika ada
-    target_file = None
-    for f in excel_files:
+    target_item = None
+    for f, p in excel_items:
         if "12" in f and "ganda" in f.lower():
-            target_file = f
+            target_item = (f, p)
             break
     
-    if target_file is None:
-        if len(excel_files) == 1:
-            target_file = excel_files[0]
+    if target_item is None:
+        if len(excel_items) == 1:
+            target_item = excel_items[0]
         else:
-            print("\nFile Excel yang tersedia:")
-            for idx, f in enumerate(excel_files, 1):
+            print("\nFile Excel BKU yang tersedia:")
+            for idx, (f, p) in enumerate(excel_items, 1):
                 print(f" [{idx}] {f}")
-            choice = input(f"Pilih file [1-{len(excel_files)}] (default 1): ").strip()
+            choice = input(f"Pilih file [1-{len(excel_items)}] (default 1): ").strip()
             try:
                 c_idx = int(choice) - 1
-                target_file = excel_files[c_idx] if 0 <= c_idx < len(excel_files) else excel_files[0]
+                target_item = excel_items[c_idx] if 0 <= c_idx < len(excel_items) else excel_items[0]
             except ValueError:
-                target_file = excel_files[0]
+                target_item = excel_items[0]
 
-    excel_path = os.path.join(data_dir, target_file)
+    target_file, excel_path = target_item
     rows_data = read_excel_data(excel_path)
     if not rows_data:
         print("Tidak ada baris link yang valid di file tersebut.")

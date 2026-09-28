@@ -105,6 +105,36 @@ def resolve_bot_detection(page, target_link):
     return True
 
 
+def get_anomaly_excel_files(base_data_dir):
+    """
+    Mencari file Excel untuk anomali:
+    1. Cek folder data/Anomali terlebih dahulu.
+    2. Jika tidak ada / kosong, cek folder data/ utama (filter file yang bukan BKU dan bukan laporan).
+    """
+    anomali_subdir = os.path.join(base_data_dir, "Anomali")
+    files_with_path = []
+    
+    if os.path.exists(anomali_subdir):
+        sub_files = [
+            f for f in os.listdir(anomali_subdir) 
+            if f.endswith(".xlsx") and not f.startswith("~$") and "laporan" not in f.lower()
+        ]
+        if sub_files:
+            for f in sub_files:
+                files_with_path.append((f, os.path.join(anomali_subdir, f)))
+            return files_with_path
+
+    root_files = [
+        f for f in os.listdir(base_data_dir) 
+        if f.endswith(".xlsx") and not f.startswith("~$") 
+        and "laporan" not in f.lower() 
+        and "bku" not in f.lower()
+    ]
+    for f in root_files:
+        files_with_path.append((f, os.path.join(base_data_dir, f)))
+        
+    return files_with_path
+
 def main():
     data_dir = os.path.join(os.getcwd(), "data")
     
@@ -112,13 +142,13 @@ def main():
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
         print(f"Folder 'data' telah dibuat di {data_dir}")
-        print("Silakan masukkan file Excel anomali ke dalam folder tersebut lalu jalankan ulang script.")
+        print("Silakan masukkan file Excel anomali ke folder 'data/Anomali' atau 'data'.")
         return
         
-    excel_files = [f for f in os.listdir(data_dir) if f.endswith(".xlsx")]
-    if not excel_files:
-        print("TIDAK ADA FILE EXCEL DITEMUKAN!")
-        print(f"Silakan masukkan file Excel anomali (.xlsx) ke dalam folder: {data_dir}")
+    excel_items = get_anomaly_excel_files(data_dir)
+    if not excel_items:
+        print("TIDAK ADA FILE EXCEL ANOMALI DITEMUKAN!")
+        print(f"Silakan letakkan file Excel anomali (.xlsx) di folder: {os.path.join(data_dir, 'Anomali')} atau {data_dir}")
         return
 
     # Load cache terlebih dahulu agar bisa menghitung status per file
@@ -131,9 +161,8 @@ def main():
     edit_links = []
     link_to_kecamatan = {}
 
-    for file_name in excel_files:
-        excel_file = os.path.join(data_dir, file_name)
-        print(f"Membaca file Excel: {file_name}...")
+    for file_name, excel_file in excel_items:
+        print(f"Membaca file Excel: {file_name} ({excel_file})...")
         
         # Cek jika file merupakan Anomali Missing Value NIK
         is_missing_value_file = "missing_value" in file_name.lower() or "missing value" in file_name.lower()

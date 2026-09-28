@@ -15,6 +15,7 @@ laporan_status_ditemukan.json
 # Data files
 data/*
 !data/.gitkeep
+!data/*/.gitkeep
 *.xlsx
 *.csv
 

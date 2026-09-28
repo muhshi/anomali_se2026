@@ -6,29 +6,45 @@ echo   AUTO-INSTALLER ^& RUNNER - EDIT ANOMALI BY ADMIN
 echo ====================================================
 echo.
 
-:: 1. Buat folder data jika belum ada
+:: 1. Buat folder data dan subfolder jika belum ada
 if not exist "data" mkdir "data"
+if not exist "data\Anomali" mkdir "data\Anomali"
+if not exist "data\BKU Ditautkan" mkdir "data\BKU Ditautkan"
 
-:: 2. Pindahkan file .xlsx dari folder utama ke folder data jika ada
+:: 2. Pindahkan file .xlsx dari folder utama ke folder data/subfolder jika ada
+for %%f in (*anomali*.xlsx) do (
+    echo [Info] Memindahkan file Anomali: %%f ke data\Anomali\
+    move /y "%%f" "data\Anomali\" >nul
+)
+for %%f in (*bku*.xlsx) do (
+    echo [Info] Memindahkan file BKU: %%f ke data\BKU Ditautkan\
+    move /y "%%f" "data\BKU Ditautkan\" >nul
+)
 for %%f in (*.xlsx) do (
-    echo [Info] Menemukan file Excel: %%f
-    move /y "%%f" "data\" >nul
+    if not "%%f"=="laporan_status_ditemukan.xlsx" (
+        echo [Info] Menemukan file Excel: %%f
+        move /y "%%f" "data\" >nul
+    )
 )
 
-:: 3. Cek ketersediaan file Excel di folder data
+:: 3. Cek ketersediaan file Excel di folder data (termasuk subfolder)
 set EXCEL_FOUND=0
-for %%f in (data\*.xlsx) do set EXCEL_FOUND=1
+for /r data %%f in (*.xlsx) do (
+    echo %%~nxf | findstr /i /v "laporan" >nul && set EXCEL_FOUND=1
+)
 
 if "%EXCEL_FOUND%"=="1" goto EXCEL_OK
 
-echo [Peringatan] TIDAK ADA FILE EXCEL DITEMUKAN di folder 'data'!
-echo Silakan masukkan file Excel anomali (.xlsx) ke dalam folder 'data'.
+echo [Peringatan] TIDAK ADA FILE EXCEL DITEMUKAN di folder 'data' (atau subfolder 'Anomali')!
+echo Silakan masukkan file Excel anomali (.xlsx) ke dalam folder 'data\Anomali'.
 echo.
 echo Tekan ENTER setelah Anda menaruh file Excel di folder 'data'...
 pause >nul
 
 set EXCEL_FOUND=0
-for %%f in (data\*.xlsx) do set EXCEL_FOUND=1
+for /r data %%f in (*.xlsx) do (
+    echo %%~nxf | findstr /i /v "laporan" >nul && set EXCEL_FOUND=1
+)
 
 if "%EXCEL_FOUND%"=="1" goto EXCEL_OK
 

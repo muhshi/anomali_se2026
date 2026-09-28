@@ -26,7 +26,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📁 Struktur Folder
 ```text
 📦 Anomali-SE2026
- ┣ 📂 data                     <-- TARUH FILE EXCEL (.xlsx) ANDA DI SINI
+ ┣ 📂 data                     <-- FOLDER UTAMA DATA EXCEL
+ ┃ ┣ 📂 Anomali                <-- Taruh file Excel anomali di sini (cth: anomaly 28 sept.xlsx)
+ ┃ ┗ 📂 BKU Ditautkan          <-- Taruh file Excel BKU di sini (cth: 12. BKU Ditautkan tapi Status Ganda.xlsx)
  ┣ 📂 chrome_profile_anomali   <-- Folder cache cookies agar tidak perlu login terus
  ┣ 📂 venv                     <-- (Terbuat otomatis) Folder sistem Python internal
  ┣ 📜 run.bat                  <-- KLIK INI UNTUK MENJALANKAN MENU BOT
@@ -44,6 +46,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-09-28
+- **Pemisahan Folder Data Otomatis (`data/Anomali` & `data/BKU Ditautkan`)**:
+  - Bot Anomali (`reject_anomali.py` & `edit_anomali_admin.py`) kini otomatis memprioritaskan membaca file dari folder `data/Anomali` dan mengabaikan file BKU serta file laporan Excel.
+  - Bot Ubah Status Ditemukan (`ubah_status_ditemukan.py`) otomatis memprioritaskan membaca file dari folder `data/BKU Ditautkan` dan mengabaikan file anomali serta file laporan Excel.
+  - Memperbarui seluruh runner (`run.bat`, `run_edit_admin.bat`, `run_status_ditemukan.bat`) agar mendeteksi ketersediaan file Excel secara rekursif di seluruh subfolder dan mengorganisir penempatan file otomatis.
 - **Fitur Bot Edit Anomali by Admin (`edit_anomali_admin.py`)**:
   - Mengubah alur penanganan anomali dari yang semula me-reject tugas menjadi langsung konfirmasi dan penyelesaian oleh Admin.
   - Alur otomatisasi:
