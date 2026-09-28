@@ -54,12 +54,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Mengubah alur penanganan anomali dari yang semula me-reject tugas menjadi langsung konfirmasi dan penyelesaian oleh Admin.
   - Alur otomatisasi:
     1. Membuka link assignment `/edit`.
-    2. Masuk ke menu **Catatan** dan mencentang checkbox **Tampilkan Anomali Usaha dan Keluarga** lalu klik **Kirim** (jika belum aktif).
+    2. Masuk ke menu **Catatan** dan mencentang checkbox **Tampilkan Anomali Usaha dan Keluarga** (langsung lanjut tanpa submit).
     3. Memeriksa menu baru yang muncul: **Anomali Usaha** dan **Anomali Keluarga**.
     4. Mendeteksi apakah ada anomali yang perlu ditindaklanjuti.
     5. Mencentang opsi **Ya, Sesuai Kondisi Lapangan** untuk setiap anomali yang muncul.
     6. Mengisi field **Penjelasan Anomali** dengan teks: *"sudah dikonfirmasi ke petugas lapangan. dan sudah sesuai kondisi lapangan"*.
-    7. Menyimpan perubahan dengan mengklik tombol **Kirim** dan menangani dialog konfirmasi.
+    7. Setelah seluruh menu anomali selesai diperiksa dan diisi, baru mengklik tombol **Kirim** dan menyelesaikan konfirmasi submit satu kali di akhir.
   - Memperbarui `run.bat` dengan opsi default [2] Edit by Admin (`1. reject, 2. edit by admin [default], 3. ubah status ditemukan`).
   - Menambahkan launcher khusus `run_edit_admin.bat` untuk eksekusi langsung bot edit by admin.
   - Menyimpan cache progres secara mandiri pada `processed_edit_admin.json`.

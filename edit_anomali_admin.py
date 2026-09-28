@@ -355,10 +355,6 @@ def handle_anomali_section(page, menu_name, explanation_text):
         processed_count += 1
         time.sleep(0.5)
 
-    if processed_count > 0:
-        print(f"  -> Menyimpan perubahan pada '{menu_name}' (Klik Kirim)...")
-        click_kirim_and_confirm(page, section_name=menu_name)
-
     return processed_count
 
 
@@ -641,8 +637,9 @@ def main():
 
                 time.sleep(1.5)
                 
-                # Centang checkbox "Tampilkan Anomali Usaha dan Keluarga"
+                # Centang checkbox "Tampilkan Anomali Usaha dan Keluarga" (tanpa klik kirim/submit)
                 print("  -> Memeriksa checkbox 'Tampilkan Anomali Usaha dan Keluarga'...")
+                checkbox_toggled = False
                 check_result = page.evaluate('''() => {
                     const elements = Array.from(document.querySelectorAll('*'));
                     const targetEl = elements.find(el => el.textContent && el.textContent.toLowerCase().includes('tampilkan anomali') && el.children.length === 0);
@@ -656,34 +653,35 @@ def main():
                                 const was_checked = cb.checked;
                                 if (!was_checked) {
                                     cb.click();
+                                    return { found: true, toggled: true, was_checked: false };
                                 }
-                                return { found: true, was_checked: was_checked };
+                                return { found: true, toggled: false, was_checked: true };
                             }
                             parent = parent.parentElement;
                         }
                         
                         targetEl.click();
-                        return { found: true, was_checked: false, note: "clicked_text_only" };
+                        return { found: true, toggled: true, was_checked: false, note: "clicked_text_only" };
                     }
-                    return { found: false, was_checked: false };
+                    return { found: false, toggled: false, was_checked: false };
                 }''')
 
                 if check_result and check_result.get('found'):
                     if check_result.get('was_checked'):
                         print("     [OK] Checkbox 'Tampilkan Anomali' sudah tercentang sebelumnya.")
                     else:
-                        print("     [OK] Berhasil mencentang 'Tampilkan Anomali'. Mengklik Kirim...")
-                        click_kirim_and_confirm(page, section_name="Catatan")
+                        print("     [OK] Berhasil mencentang 'Tampilkan Anomali' (tanpa submit, langsung menuju menu anomali).")
+                        checkbox_toggled = True
                 else:
-                    # Fallback Playwright
                     try:
                         page.locator("text=/Tampilkan Anomali/i").first.click(timeout=3000, force=True)
-                        click_kirim_and_confirm(page, section_name="Catatan")
+                        print("     [OK] Berhasil mencentang 'Tampilkan Anomali' via fallback.")
+                        checkbox_toggled = True
                     except Exception:
                         print("     [Info] Checkbox 'Tampilkan Anomali' tidak terdeteksi atau sudah aktif.")
 
-                # Beri waktu beberapa detik agar sidebar mengupdate menu Anomali Usaha dan Anomali Keluarga
-                time.sleep(2.5)
+                # Beri jeda singkat agar menu sidebar merender Anomali Usaha dan Anomali Keluarga
+                time.sleep(1.5)
 
                 # -------------------------------------------------------------
                 # 2. PERIKSA & PROSES MENU ANOMALI USAHA & ANOMALI KELUARGA
@@ -700,17 +698,22 @@ def main():
                         continue
                     
                     print(f"     [OK] Menu '{menu_name}' terbuka. Memeriksa isi anomali...")
-                    time.sleep(2)
+                    time.sleep(1.5)
                     
-                    # Proses anomali pada bagian ini
+                    # Proses anomali pada bagian ini (hanya checklist & isi penjelasan, belum submit)
                     handled = handle_anomali_section(page, menu_name, PENJELASAN_ANOMALI_TEXT)
                     total_anomalies_handled += handled
-                    time.sleep(1.5)
+                    time.sleep(1)
 
-                if total_anomalies_handled > 0:
-                    print(f"  -> [BERHASIL] Total {total_anomalies_handled} anomali berhasil diperbaiki by admin.")
+                # -------------------------------------------------------------
+                # 3. SETELAH SEMUANYA SELESAI, KLIK KIRIM DAN SUBMIT
+                # -------------------------------------------------------------
+                if total_anomalies_handled > 0 or checkbox_toggled:
+                    print("  -> Seluruh bagian anomali telah selesai diperiksa. Mengklik 'Kirim' & Submit...")
+                    click_kirim_and_confirm(page, section_name="Submit Akhir")
+                    print(f"  -> [BERHASIL] Total {total_anomalies_handled} anomali berhasil diperbaiki & disubmit by admin.")
                 else:
-                    print("  -> [INFO] Tidak ada anomali aktif yang memerlukan penjelasan pada assignment ini.")
+                    print("  -> [INFO] Tidak ada perubahan anomali aktif pada assignment ini.")
 
                 # Simpan link ke cache sukses
                 processed_cache.add(link)
