@@ -1,8 +1,8 @@
 @echo off
-title Bot Otomatisasi Reject Anomali Fasih-SM BPS
+title Bot Edit Anomali by Admin - Fasih-SM BPS
 
 echo ====================================================
-echo   AUTO-INSTALLER ^& RUNNER - BPS FASIH ANOMALI BOT
+echo   AUTO-INSTALLER ^& RUNNER - EDIT ANOMALI BY ADMIN
 echo ====================================================
 echo.
 
@@ -121,28 +121,10 @@ python -m playwright install chromium
 
 echo.
 echo ====================================================
-echo PILIH BOT YANG INGIN DIJALANKAN:
+echo Menjalankan Bot Edit Anomali by Admin...
 echo ====================================================
-echo [1] Bot Reject Anomali (reject_anomali.py)
-echo [2] Bot Edit Anomali by Admin (edit_anomali_admin.py) [DEFAULT]
-echo [3] Bot Ubah Status Ditemukan ^& Submit Paksa (ubah_status_ditemukan.py)
-echo ====================================================
-set "BOT_CHOICE=2"
-set /p BOT_CHOICE="Pilih nomor [1/2/3] (Default: 2): "
-
-if "%BOT_CHOICE%"=="1" (
-    echo.
-    echo Menjalankan Bot Otomatisasi Reject Anomali...
-    python reject_anomali.py
-) else if "%BOT_CHOICE%"=="3" (
-    echo.
-    echo Menjalankan Bot Ubah Status Ditemukan ^& Submit Paksa...
-    python ubah_status_ditemukan.py
-) else (
-    echo.
-    echo Menjalankan Bot Edit Anomali by Admin...
-    python edit_anomali_admin.py
-)
+echo.
+python edit_anomali_admin.py
 
 echo.
 echo ====================================================

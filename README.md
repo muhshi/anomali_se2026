@@ -30,15 +30,33 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
  ┣ 📂 chrome_profile_anomali   <-- Folder cache cookies agar tidak perlu login terus
  ┣ 📂 venv                     <-- (Terbuat otomatis) Folder sistem Python internal
  ┣ 📜 run.bat                  <-- KLIK INI UNTUK MENJALANKAN MENU BOT
+ ┣ 📜 run_edit_admin.bat       <-- Launcher khusus Bot Edit Anomali by Admin
  ┣ 📜 run_status_ditemukan.bat <-- Launcher khusus Bot Ubah Status Ditemukan
+ ┣ 📜 edit_anomali_admin.py    <-- Script bot konfirmasi & perbaikan anomali by admin
  ┣ 📜 reject_anomali.py        <-- Script bot reject anomali
  ┣ 📜 ubah_status_ditemukan.py <-- Script bot ubah status '1. Ditemukan' & Submit Paksa
+ ┣ 📜 processed_edit_admin.json <-- Log cache bot edit by admin
  ┣ 📜 processed_links.json     <-- Log cache bot reject
  ┣ 📜 processed_status_ditemukan.json <-- Log cache bot ubah status
  ┗ 📜 README.md
 ```
 
 ## 📝 Changelog
+
+### 2026-09-28
+- **Fitur Bot Edit Anomali by Admin (`edit_anomali_admin.py`)**:
+  - Mengubah alur penanganan anomali dari yang semula me-reject tugas menjadi langsung konfirmasi dan penyelesaian oleh Admin.
+  - Alur otomatisasi:
+    1. Membuka link assignment `/edit`.
+    2. Masuk ke menu **Catatan** dan mencentang checkbox **Tampilkan Anomali Usaha dan Keluarga** lalu klik **Kirim** (jika belum aktif).
+    3. Memeriksa menu baru yang muncul: **Anomali Usaha** dan **Anomali Keluarga**.
+    4. Mendeteksi apakah ada anomali yang perlu ditindaklanjuti.
+    5. Mencentang opsi **Ya, Sesuai Kondisi Lapangan** untuk setiap anomali yang muncul.
+    6. Mengisi field **Penjelasan Anomali** dengan teks: *"sudah dikonfirmasi ke petugas lapangan. dan sudah sesuai kondisi lapangan"*.
+    7. Menyimpan perubahan dengan mengklik tombol **Kirim** dan menangani dialog konfirmasi.
+  - Memperbarui `run.bat` dengan opsi default [2] Edit by Admin (`1. reject, 2. edit by admin [default], 3. ubah status ditemukan`).
+  - Menambahkan launcher khusus `run_edit_admin.bat` untuk eksekusi langsung bot edit by admin.
+  - Menyimpan cache progres secara mandiri pada `processed_edit_admin.json`.
 
 ### 2026-09-23
 - **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:
