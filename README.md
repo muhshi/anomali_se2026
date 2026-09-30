@@ -76,6 +76,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Menambahkan file laporan Excel khusus `laporan_usaha_sudah_diganti.xlsx` (dan `.json`) untuk merekap seluruh kasus penautan yang gagal diubah statusnya karena usaha sudah diganti pada keluarga tersebut.
   - Memuat metadata lengkap dari data BKU (Assignment ID, Level 6 Full Code, ID SBR Usaha, Nama Bangunan/Usaha, Status Awal, Keluarga Ditautkan Awal, Keluarga Pengganti di Fasih, Pesan Peringatan Lengkap, Link Fasih, dan File Sumber).
   - Mengikutsertakan seluruh data yang telah diproses sebelumnya (36 data awal) serta memperbarui laporan secara *real-time* saat bot sedang berjalan.
+- **Penyederhanaan Log & Akselerasi Skip Modal Titik Tiga**:
+  - Menghilangkan log dump diagnostik tombol DOM yang panjang saat tombol titik tiga tidak ditemukan, diganti dengan pesan status bersih dan ringkas.
+  - Menambahkan selector presisi `border-l` (split button di samping tombol Kirim) dan memangkas waktu percobaan pencarian menjadi maksimal 2x percobaan cepat.
+  - Menangani kondisi ketiadaan menu 'Submit Paksa' sebagai status `SKIP - TIDAK ADA SUBMIT PAKSA` yang otomatis tersimpan di cache dan laporan tanpa memicu crash/error berulang.
+  - Mempercepat jeda (*delay*) perpindahan link untuk data yang di-skip menjadi 1.5 - 3 detik (sebelumnya 6 - 11 detik).
 
 ### 2026-09-23
 - **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:

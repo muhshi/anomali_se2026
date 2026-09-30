@@ -755,14 +755,14 @@ def process_single_assignment(page, item):
             return False
 
     split_selectors = [
+        page.locator("button.tw\\:border-l, button[class*='border-l']"),
         page.locator("button:has(svg path[d*='M12 12m-1'])"),
         page.locator("button.tw\\:rounded-r-lg, button[class*='rounded-r-lg']"),
-        page.locator("[role='dialog'] button:has(svg path[d*='M12 12m-1'])"),
-        page.locator("[role='dialog'] button.tw\\:rounded-r-lg"),
+        page.locator("[role='dialog'] button.tw\\:border-l, [role='dialog'] button[class*='border-l']"),
         page.locator("[role='dialog'] button:has(svg)")
     ]
 
-    for attempt in range(5):
+    for attempt in range(2):
         if is_menu_open():
             dots_clicked = True
             print("     [OK] Menu 'Submit Paksa' sudah muncul.")
@@ -783,7 +783,7 @@ def process_single_assignment(page, item):
                                 clicked_via_pw = True
                                 break
                             else:
-                                el.click(timeout=2000, force=True)
+                                el.click(timeout=1000, force=True)
                                 clicked_via_pw = True
                                 break
                     if clicked_via_pw:
@@ -791,7 +791,7 @@ def process_single_assignment(page, item):
             except Exception:
                 pass
 
-        time.sleep(1)
+        time.sleep(0.5)
         if is_menu_open():
             dots_clicked = True
             print("     [OK] Menu titik tiga berhasil dibuka via Playwright mouse click.")
@@ -801,33 +801,31 @@ def process_single_assignment(page, item):
         page.evaluate('''() => {
             const btns = Array.from(document.querySelectorAll('button'));
             
+            // Prioritas 1: Button border-l (split button di sebelah kanan tombol Kirim)
             let target = btns.find(b => {
                 const c = b.className || '';
-                return c.includes('rounded-r-lg') && b.offsetParent !== null;
+                return c.includes('border-l') && b.offsetParent !== null;
             });
+
+            // Prioritas 2: Button rounded-r-lg
+            if (!target) {
+                target = btns.find(b => {
+                    const c = b.className || '';
+                    return c.includes('rounded-r-lg') && b.offsetParent !== null;
+                });
+            }
 
             if (!target) {
                 target = btns.find(b => {
                     const svgs = b.querySelectorAll('svg');
                     for (const s of svgs) {
                         const html = s.innerHTML || '';
-                        if (html.includes('M12 12m-1') || html.includes('M12 5m-1') || html.includes('M12 19m-1')) {
+                        if (html.includes('circle') || html.includes('M12 12m-1') || html.includes('M12 5m-1') || html.includes('M12 19m-1')) {
                             return true;
                         }
                     }
                     return false;
                 });
-            }
-
-            if (!target) {
-                const modal = document.querySelector('[role="dialog"], .modal, div[data-state="open"]');
-                if (modal) {
-                    const modalBtns = Array.from(modal.querySelectorAll('button'));
-                    target = modalBtns.find(b => {
-                        const rect = b.getBoundingClientRect();
-                        return rect.width > 10 && rect.width < 50 && rect.height > 20;
-                    });
-                }
             }
 
             if (target) {
@@ -845,7 +843,7 @@ def process_single_assignment(page, item):
             }
         }''')
 
-        time.sleep(1)
+        time.sleep(0.5)
         if is_menu_open():
             dots_clicked = True
             print("     [OK] Menu titik tiga berhasil dibuka via JS event simulation.")
@@ -855,17 +853,12 @@ def process_single_assignment(page, item):
         # Cek apakah ada peringatan usaha sudah diganti yang baru terdeteksi
         is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
         if is_diganti:
-            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
+            m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', msg_diganti, re.IGNORECASE)
+            fam_in_warning = m_fam.group(1).strip() if m_fam else ''
+            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_in_warning
 
-        diag_btns = page.evaluate('''() => {
-            return Array.from(document.querySelectorAll('button')).map(b => ({
-                text: (b.innerText || '').trim(),
-                className: b.className || '',
-                visible: b.offsetParent !== null
-            })).filter(b => b.visible);
-        }''')
-        print(f"  -> [Diagnostic] Daftar tombol terlihat di modal: {diag_btns}")
-        raise Exception("Tombol titik tiga (split dropdown) gagal memunculkan menu 'Submit Paksa'.")
+        print("  -> [SKIP] Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal.")
+        return "SKIP_NO_SUBMIT_PAKSA", "Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal"
 
     # 7. Klik menu item 'Submit Paksa'
     print("  -> Mengklik 'Submit Paksa'...")
@@ -1208,6 +1201,21 @@ def main():
                     })
                     print(f"  -> [SKIP] Ditandai di cache (Bukan otorisasi Anda).")
 
+                elif status == "SKIP_NO_SUBMIT_PAKSA":
+                    processed_cache.add(link)
+                    save_cache(processed_cache)
+                    skip_count += 1
+                    append_or_update_report({
+                        "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "kab": kab,
+                        "nama": nama,
+                        "link": link,
+                        "status": "SKIP - TIDAK ADA SUBMIT PAKSA",
+                        "keterangan": "Tombol titik tiga / menu Submit Paksa tidak muncul pada modal",
+                        "detail_pesan": msg
+                    })
+                    print(f"  -> [SKIP] Ditandai di cache (Tidak ada menu 'Submit Paksa').")
+
             except Exception as e:
                 fail_count += 1
                 print(f"  -> [GAGAL] Error saat memproses: {e}")
@@ -1215,8 +1223,11 @@ def main():
                     resolve_bot_detection(page, link)
                 print("     Lanjut ke baris berikutnya...")
 
-            # Jeda acak antar link (6-11 detik)
-            delay = random.uniform(6, 11)
+            # Jeda antar link: cepat untuk yang di-skip (1.5 - 3 detik), normal untuk sukses (5 - 8 detik)
+            if status and status.startswith("SKIP"):
+                delay = random.uniform(1.5, 3.0)
+            else:
+                delay = random.uniform(5.0, 8.0)
             time.sleep(delay)
 
             # Istirahat 30-45 detik setiap kelipatan 15 link agar tidak terkena rate limit WAF
