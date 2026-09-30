@@ -64,6 +64,15 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Menambahkan launcher khusus `run_edit_admin.bat` untuk eksekusi langsung bot edit by admin.
   - Menyimpan cache progres secara mandiri pada `processed_edit_admin.json`.
 
+### 2026-09-30
+- **Dukungan Multi-File BKU Ditautkan & Pemrosesan Gabungan**:
+  - Memperbarui sistem pemilihan file pada bot `ubah_status_ditemukan.py`: menghilangkan pembatasan hardcoded yang sebelumnya hanya memilih file 'Status Ganda'.
+  - Menambahkan opsi default `[0] SEMUA FILE BKU` untuk menggabungkan seluruh file BKU sekaligus (Status Tutup, Status Ganda, dan Tidak Ditemukan) dengan deduplikasi link otomatis.
+  - Tetap menyediakan opsi interaktif untuk memilih file individual jika diinginkan.
+- **Filter Data BKU Ditautkan Khusus Kabupaten Demak (3321)**:
+  - Menyaring seluruh data pada file `11. BKU Ditautkan tapi Status Tutup`, `12. BKU Ditautkan tapi Status Ganda`, dan `BKU ditautkan tp tdk ditemukan` khusus untuk wilayah Kabupaten Demak (kode `3321`).
+  - Mengamankan file data provinsi awal ke dalam subfolder `data/BKU Ditautkan/_semua_prov_backup/`.
+
 ### 2026-09-23
 - **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:
   - Memperbaiki parsing karakter khusus `&` pada baris menu `run.bat` dan `title` pada `run_status_ditemukan.bat` yang sebelumnya menyebabkan command prompt langsung *force close* (crash) seketika saat dibuka di komputer lain.

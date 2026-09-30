@@ -873,22 +873,24 @@ def get_bku_excel_files(base_data_dir):
     files_with_path = []
     
     if os.path.exists(bku_subdir):
-        sub_files = [
+        sub_files = sorted([
             f for f in os.listdir(bku_subdir) 
-            if f.endswith(".xlsx") and not f.startswith("~$") and "laporan" not in f.lower()
-        ]
+            if os.path.isfile(os.path.join(bku_subdir, f))
+            and f.endswith(".xlsx") and not f.startswith("~$") and "laporan" not in f.lower()
+        ])
         if sub_files:
             for f in sub_files:
                 files_with_path.append((f, os.path.join(bku_subdir, f)))
             return files_with_path
 
     # Fallback ke folder data utama jika di subfolder tidak ada file
-    root_files = [
+    root_files = sorted([
         f for f in os.listdir(base_data_dir) 
-        if f.endswith(".xlsx") and not f.startswith("~$") 
+        if os.path.isfile(os.path.join(base_data_dir, f))
+        and f.endswith(".xlsx") and not f.startswith("~$") 
         and "laporan" not in f.lower() 
         and "anomali" not in f.lower()
-    ]
+    ])
     for f in root_files:
         files_with_path.append((f, os.path.join(base_data_dir, f)))
         
@@ -908,34 +910,58 @@ def main():
         print(f"Silakan letakkan file Excel BKU (.xlsx) di folder: {os.path.join(data_dir, 'BKU Ditautkan')} atau {data_dir}")
         return
 
-    # Prioritaskan file '12. BKU Ditautkan tapi Status Ganda.xlsx' jika ada
-    target_item = None
-    for f, p in excel_items:
-        if "12" in f and "ganda" in f.lower():
-            target_item = (f, p)
-            break
-    
-    if target_item is None:
-        if len(excel_items) == 1:
-            target_item = excel_items[0]
+    # Pilihan file: proses semua file sekaligus atau pilih file tertentu
+    target_files = []
+    file_label = ""
+    if len(excel_items) == 1:
+        target_files = [excel_items[0]]
+        file_label = excel_items[0][0]
+    else:
+        print("\n" + "="*65)
+        print(" PILIHAN FILE EXCEL BKU DITAUTKAN:")
+        print("="*65)
+        print(f" [0] SEMUA FILE BKU ({len(excel_items)} file sekaligus) -> DEFAULT")
+        for idx, (f, p) in enumerate(excel_items, 1):
+            print(f" [{idx}] {f}")
+        print("="*65)
+        choice = input(f"Pilih file [0-{len(excel_items)}] (default [0] Semua File): ").strip()
+        if not choice or choice == "0":
+            target_files = excel_items
+            file_label = f"SEMUA FILE ({len(excel_items)} file BKU)"
         else:
-            print("\nFile Excel BKU yang tersedia:")
-            for idx, (f, p) in enumerate(excel_items, 1):
-                print(f" [{idx}] {f}")
-            choice = input(f"Pilih file [1-{len(excel_items)}] (default 1): ").strip()
             try:
                 c_idx = int(choice) - 1
-                target_item = excel_items[c_idx] if 0 <= c_idx < len(excel_items) else excel_items[0]
+                if 0 <= c_idx < len(excel_items):
+                    target_files = [excel_items[c_idx]]
+                    file_label = excel_items[c_idx][0]
+                else:
+                    target_files = excel_items
+                    file_label = f"SEMUA FILE ({len(excel_items)} file BKU)"
             except ValueError:
-                target_item = excel_items[0]
+                target_files = excel_items
+                file_label = f"SEMUA FILE ({len(excel_items)} file BKU)"
 
-    target_file, excel_path = target_item
-    rows_data = read_excel_data(excel_path)
+    # Membaca data dari file-file yang dipilih (gabungkan & hindari duplikasi link)
+    rows_data = []
+    seen_links = set()
+    print("\n" + "-"*65)
+    for f, p in target_files:
+        items = read_excel_data(p)
+        added_count = 0
+        for item in items:
+            link = item["link"]
+            if link not in seen_links:
+                seen_links.add(link)
+                rows_data.append(item)
+                added_count += 1
+        print(f"-> Berhasil memuat {added_count} data unik dari: {f}")
+    print("-"*65)
+
     if not rows_data:
-        print("Tidak ada baris link yang valid di file tersebut.")
+        print("Tidak ada baris link yang valid di file-file tersebut.")
         return
 
-    print(f"-> Total {len(rows_data)} baris data berhasil dibaca dari {target_file}.")
+    print(f"-> TOTAL DATA TERPILIH: {len(rows_data)} baris.")
 
     # Pilihan filter kabupaten/kota
     active_data = select_kabupaten(rows_data)
@@ -948,7 +974,7 @@ def main():
     print("\n" + "="*65)
     print(" REKAPAN STATUS PENGERJAAN:")
     print("="*65)
-    print(f" - File Digunakan     : {target_file}")
+    print(f" - File Digunakan     : {file_label}")
     print(f" - Total Link Target  : {len(active_data)}")
     print(f" - Sudah Selesai      : {already_done} ({pct:.1f}%)")
     print(f" - Sisa Diproses      : {len(pending_items)}")
