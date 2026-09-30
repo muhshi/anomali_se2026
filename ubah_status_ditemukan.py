@@ -492,11 +492,12 @@ def process_single_assignment(page, item):
         return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
 
     # Cek apakah ada peringatan usaha sudah diganti
-    is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+    is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
     if is_diganti:
-        m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', msg_diganti, re.IGNORECASE)
-        fam_in_warning = m_fam.group(1).strip() if m_fam else ''
-        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_in_warning
+        print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti pada halaman awal.")
+        if fam_diganti:
+            print(f"     Keluarga Pengganti: {fam_diganti}")
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
     # 3. Klik menu 'SE2026 - P'
     print("  -> Mencari dan mengklik menu 'SE2026 - P'...")
@@ -904,11 +905,12 @@ def process_single_assignment(page, item):
 
     if not is_menu_open():
         # Cek apakah ada peringatan usaha sudah diganti yang baru terdeteksi
-        is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+        is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
         if is_diganti:
-            m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', msg_diganti, re.IGNORECASE)
-            fam_in_warning = m_fam.group(1).strip() if m_fam else ''
-            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_in_warning
+            print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti.")
+            if fam_diganti:
+                print(f"     Keluarga Pengganti: {fam_diganti}")
+            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
         print("  -> [SKIP] Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal.")
         return "SKIP_NO_SUBMIT_PAKSA", "Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal"
@@ -1184,6 +1186,7 @@ def main():
 
             print(f"[{idx}/{total_target}] [Kab {kab}] Memproses: {nama} ({link})")
 
+            status = None
             try:
                 res = process_single_assignment(page, item)
                 status = res[0]

@@ -85,6 +85,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Mengintegrasikan pengecekan peringatan "Usaha ini pernah ditautkan... sudah diganti" langsung saat halaman menu `SE2026 - P` terbuka, selama proses render, dan sebelum memilih radio atau mengklik Kirim.
   - Memanfaatkan Playwright locator DOM langsung (`text=/pernah ditautkan/i`) yang bekerja instan (<50ms) dan andal mendeteksi alert banner.
   - Meniadakan langkah memilih radio, klik Kirim, dan menunggu modal titik tiga pada assignment yang usahanya sudah diganti sehingga langsung di-skip seketika dan tercatat rapi ke Excel.
+- **Fix Unpack Variable & Inisialisasi Status pada Main Loop**:
+  - Menyelaraskan seluruh pemanggilan `check_usaha_sudah_diganti` (pada halaman awal dan modal) agar selalu menerima 3 nilai kembalian (`is_diganti, msg_diganti, fam_diganti`) guna mencegah `ValueError: too many values to unpack`.
+  - Menginisialisasi variabel `status = None` sebelum blok `try` pada *loop* utama sehingga penentuan jeda aman dari `UnboundLocalError`.
 
 ### 2026-09-23
 - **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:
