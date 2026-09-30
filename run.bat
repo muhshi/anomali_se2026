@@ -21,7 +21,7 @@ for %%f in (*bku*.xlsx) do (
     move /y "%%f" "data\BKU Ditautkan\" >nul
 )
 for %%f in (*.xlsx) do (
-    if not "%%f"=="laporan_status_ditemukan.xlsx" (
+    if not "%%f"=="laporan_status_ditemukan.xlsx" if not "%%f"=="laporan_usaha_sudah_diganti.xlsx" (
         echo [Info] Menemukan file Excel: %%f
         move /y "%%f" "data\" >nul
     )

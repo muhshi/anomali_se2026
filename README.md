@@ -72,6 +72,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 - **Filter Data BKU Ditautkan Khusus Kabupaten Demak (3321)**:
   - Menyaring seluruh data pada file `11. BKU Ditautkan tapi Status Tutup`, `12. BKU Ditautkan tapi Status Ganda`, dan `BKU ditautkan tp tdk ditemukan` khusus untuk wilayah Kabupaten Demak (kode `3321`).
   - Mengamankan file data provinsi awal ke dalam subfolder `data/BKU Ditautkan/_semua_prov_backup/`.
+- **Rekap Otomatis Usaha Sudah Diganti (`laporan_usaha_sudah_diganti.xlsx`)**:
+  - Menambahkan file laporan Excel khusus `laporan_usaha_sudah_diganti.xlsx` (dan `.json`) untuk merekap seluruh kasus penautan yang gagal diubah statusnya karena usaha sudah diganti pada keluarga tersebut.
+  - Memuat metadata lengkap dari data BKU (Assignment ID, Level 6 Full Code, ID SBR Usaha, Nama Bangunan/Usaha, Status Awal, Keluarga Ditautkan Awal, Keluarga Pengganti di Fasih, Pesan Peringatan Lengkap, Link Fasih, dan File Sumber).
+  - Mengikutsertakan seluruh data yang telah diproses sebelumnya (36 data awal) serta memperbarui laporan secara *real-time* saat bot sedang berjalan.
 
 ### 2026-09-23
 - **Fix Force Close Launcher Batch & Kompatibilitas Multi-PC**:

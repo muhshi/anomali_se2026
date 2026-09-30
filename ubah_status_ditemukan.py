@@ -33,6 +33,8 @@ import xml.etree.ElementTree as ET
 CACHE_FILE = "processed_status_ditemukan.json"
 REPORT_JSON = "laporan_status_ditemukan.json"
 REPORT_EXCEL = "laporan_status_ditemukan.xlsx"
+REPORT_DIGANTI_JSON = "laporan_usaha_sudah_diganti.json"
+REPORT_DIGANTI_EXCEL = "laporan_usaha_sudah_diganti.xlsx"
 
 def load_cache():
     if os.path.exists(CACHE_FILE):
@@ -75,6 +77,55 @@ def save_report(reports_list):
     except Exception as e:
         pass
 
+def load_diganti_reports():
+    if os.path.exists(REPORT_DIGANTI_JSON):
+        try:
+            with open(REPORT_DIGANTI_JSON, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_diganti_reports(reports_list):
+    try:
+        with open(REPORT_DIGANTI_JSON, "w", encoding="utf-8") as f:
+            json.dump(reports_list, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"  -> Error menyimpan report diganti JSON: {e}")
+    try:
+        if reports_list:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Usaha_Sudah_Diganti"
+            headers = [
+                "No", "Waktu_Pemeriksaan", "Kab", "Level_6_Full_Code", "Assignment_ID",
+                "ID_SBR_Usaha", "Nama_Bangunan_Usaha", "Nama_Usaha", "Status_Keberadaan_Awal",
+                "Keluarga_Ditautkan_Awal", "Keluarga_Pengganti_Di_Fasih", "Status_Hasil",
+                "Pesan_Peringatan_Fasih", "Link_Fasih", "File_Sumber"
+            ]
+            ws.append(headers)
+            for idx, item in enumerate(reports_list, 1):
+                ws.append([
+                    idx,
+                    item.get("waktu", ""),
+                    item.get("kab", ""),
+                    item.get("level_6_full_code", ""),
+                    item.get("assignment_id", ""),
+                    item.get("idsbrusaha", ""),
+                    item.get("namabangunanusaha", item.get("nama", "")),
+                    item.get("namausaha", ""),
+                    item.get("statuskeberadaan", ""),
+                    item.get("namakeluargaditautkan", ""),
+                    item.get("keluarga_pengganti", ""),
+                    item.get("status_hasil", "GAGAL UBAH STATUS (USAHA SUDAH DIGANTI)"),
+                    item.get("pesan_peringatan", ""),
+                    item.get("link", ""),
+                    item.get("source_file", "")
+                ])
+            wb.save(REPORT_DIGANTI_EXCEL)
+    except Exception as e:
+        print(f"  -> Error menyimpan report diganti Excel: {e}")
+
 def check_usaha_sudah_diganti(page):
     """
     Mengecek apakah terdapat peringatan bahwa usaha ini pernah ditautkan tetapi sudah diganti dengan yang lain,
@@ -82,18 +133,26 @@ def check_usaha_sudah_diganti(page):
     """
     try:
         res = page.evaluate('''() => {
-            const bodyText = (document.body.innerText || '').toLowerCase();
-            const hasKeyword1 = bodyText.includes('pernah ditautkan') || bodyText.includes('ditautkan pada usaha');
-            const hasKeyword2 = bodyText.includes('sudah diganti') || bodyText.includes('tidak ditemukan lagi pada keluarga') || bodyText.includes('tidak ditemukan lagi');
+            const bodyText = (document.body.innerText || '');
+            const bodyLower = bodyText.toLowerCase();
+            const hasKeyword1 = bodyLower.includes('pernah ditautkan') || bodyLower.includes('ditautkan pada usaha');
+            const hasKeyword2 = bodyLower.includes('sudah diganti') || bodyLower.includes('tidak ditemukan lagi pada keluarga') || bodyLower.includes('tidak ditemukan lagi');
             
             if (hasKeyword1 && hasKeyword2) {
+                const match = bodyText.match(/(?:[^\n\r]*?pernah ditautkan[^\n\r]*?keluarga tersebut[^\n\r]*)/i);
+                if (match) {
+                    return { detected: true, message: match[0].trim() };
+                }
                 const allElements = Array.from(document.querySelectorAll('div, p, span, [role="alert"], .alert'));
-                const alertEl = allElements.find(el => {
+                const leafElements = allElements.filter(el => {
                     const t = (el.innerText || el.textContent || '').trim().toLowerCase();
                     return t.includes('pernah ditautkan') && (t.includes('sudah diganti') || t.includes('tidak ditemukan lagi'));
-                });
-                const fullText = alertEl ? alertEl.innerText.trim() : "Usaha ini pernah ditautkan pada usaha keluarga, namun usaha yang ditautkan sudah diganti sehingga saat ini tidak ditemukan lagi pada keluarga tersebut.";
-                return { detected: true, message: fullText };
+                }).sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
+
+                if (leafElements.length > 0) {
+                    return { detected: true, message: leafElements[0].innerText.trim() };
+                }
+                return { detected: true, message: "Usaha ini pernah ditautkan pada usaha keluarga, namun usaha yang ditautkan sudah diganti sehingga saat ini tidak ditemukan lagi pada keluarga tersebut." };
             }
             return { detected: false, message: "" };
         }''')
@@ -243,6 +302,11 @@ def read_excel_data(excel_path):
     kab_col_idx = None
     nama_col_idx = None
     status_col_idx = None
+    assignment_id_col_idx = None
+    level_6_col_idx = None
+    idsbr_col_idx = None
+    namausaha_col_idx = None
+    namakeluarga_col_idx = None
 
     rows_data = []
     
@@ -255,11 +319,22 @@ def read_excel_data(excel_path):
                     link_col_idx = c_idx
                 elif 'kab' in val or 'kabupaten' in val:
                     kab_col_idx = c_idx
-                elif 'namabangunanusaha' in val or 'namausaha' in val or 'nama bangunan' in val:
+                elif 'namabangunanusaha' in val or 'nama bangunan' in val:
+                    nama_col_idx = c_idx
+                elif 'namausaha' in val:
+                    namausaha_col_idx = c_idx
                     if nama_col_idx is None:
                         nama_col_idx = c_idx
                 elif 'statuskeberadaan' in val or 'status' in val:
                     status_col_idx = c_idx
+                elif 'assignment_id' in val:
+                    assignment_id_col_idx = c_idx
+                elif 'level_6' in val:
+                    level_6_col_idx = c_idx
+                elif 'idsbr' in val:
+                    idsbr_col_idx = c_idx
+                elif 'keluarga' in val or 'namakeluarga' in val:
+                    namakeluarga_col_idx = c_idx
             
             if link_col_idx is not None:
                 header_row = row_idx
@@ -286,11 +361,25 @@ def read_excel_data(excel_path):
 
         kab = str(row[kab_col_idx]).strip() if (kab_col_idx is not None and len(row) > kab_col_idx and row[kab_col_idx] is not None) else "UNKNOWN"
         nama = str(row[nama_col_idx]).strip() if (nama_col_idx is not None and len(row) > nama_col_idx and row[nama_col_idx] is not None) else ""
+        assignment_id = str(row[assignment_id_col_idx]).strip() if (assignment_id_col_idx is not None and len(row) > assignment_id_col_idx and row[assignment_id_col_idx] is not None) else ""
+        level_6_full_code = str(row[level_6_col_idx]).strip() if (level_6_col_idx is not None and len(row) > level_6_col_idx and row[level_6_col_idx] is not None) else ""
+        idsbrusaha = str(row[idsbr_col_idx]).strip() if (idsbr_col_idx is not None and len(row) > idsbr_col_idx and row[idsbr_col_idx] is not None) else ""
+        namausaha = str(row[namausaha_col_idx]).strip() if (namausaha_col_idx is not None and len(row) > namausaha_col_idx and row[namausaha_col_idx] is not None) else ""
+        statuskeberadaan = str(row[status_col_idx]).strip() if (status_col_idx is not None and len(row) > status_col_idx and row[status_col_idx] is not None) else ""
+        namakeluargaditautkan = str(row[namakeluarga_col_idx]).strip() if (namakeluarga_col_idx is not None and len(row) > namakeluarga_col_idx and row[namakeluarga_col_idx] is not None) else ""
         
         rows_data.append({
             "link": link,
             "kab": kab,
-            "nama": nama
+            "nama": nama,
+            "assignment_id": assignment_id,
+            "level_6_full_code": level_6_full_code,
+            "idsbrusaha": idsbrusaha,
+            "namabangunanusaha": nama,
+            "namausaha": namausaha,
+            "statuskeberadaan": statuskeberadaan,
+            "namakeluargaditautkan": namakeluargaditautkan,
+            "source_file": os.path.basename(excel_path)
         })
 
     wb.close()
@@ -378,7 +467,9 @@ def process_single_assignment(page, item):
     # Cek apakah ada peringatan usaha sudah diganti
     is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
     if is_diganti:
-        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
+        m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', msg_diganti, re.IGNORECASE)
+        fam_in_warning = m_fam.group(1).strip() if m_fam else ''
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_in_warning
 
     # 3. Klik menu 'SE2026 - P'
     print("  -> Mencari dan mengklik menu 'SE2026 - P'...")
@@ -1018,6 +1109,18 @@ def main():
                 reports_data.append(item_data)
             save_report(reports_data)
 
+        diganti_reports_data = load_diganti_reports()
+        diganti_link_map = {r.get("link"): idx for idx, r in enumerate(diganti_reports_data)}
+
+        def append_or_update_diganti_report(item_data):
+            link = item_data.get("link")
+            if link in diganti_link_map:
+                diganti_reports_data[diganti_link_map[link]] = item_data
+            else:
+                diganti_link_map[link] = len(diganti_reports_data)
+                diganti_reports_data.append(item_data)
+            save_diganti_reports(diganti_reports_data)
+
         total_target = len(active_data)
         success_count = 0
         skip_count = 0
@@ -1036,7 +1139,10 @@ def main():
             print(f"[{idx}/{total_target}] [Kab {kab}] Memproses: {nama} ({link})")
 
             try:
-                status, msg = process_single_assignment(page, item)
+                res = process_single_assignment(page, item)
+                status = res[0]
+                msg = res[1]
+                fam_in_warning = res[2] if len(res) > 2 else ""
                 
                 if status == "SUCCESS":
                     processed_cache.add(link)
@@ -1066,8 +1172,26 @@ def main():
                         "keterangan": "Usaha sudah diganti dengan yang lain, jadi assignment ini tidak ditemukan",
                         "detail_pesan": msg
                     })
+                    append_or_update_diganti_report({
+                        "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "kab": kab,
+                        "level_6_full_code": item.get("level_6_full_code", ""),
+                        "assignment_id": item.get("assignment_id", ""),
+                        "idsbrusaha": item.get("idsbrusaha", ""),
+                        "namabangunanusaha": item.get("namabangunanusaha", nama),
+                        "namausaha": item.get("namausaha", ""),
+                        "statuskeberadaan": item.get("statuskeberadaan", ""),
+                        "namakeluargaditautkan": item.get("namakeluargaditautkan", ""),
+                        "keluarga_pengganti": fam_in_warning,
+                        "status_hasil": "GAGAL UBAH STATUS (USAHA SUDAH DIGANTI)",
+                        "pesan_peringatan": msg,
+                        "link": link,
+                        "source_file": item.get("source_file", "")
+                    })
                     print(f"  -> [SKIP] Usaha sudah diganti dengan yang lain (assignment tidak ditemukan).")
                     print(f"     Pesan: {msg}")
+                    if fam_in_warning:
+                        print(f"     Keluarga Pengganti: {fam_in_warning}")
 
                 elif status == "SKIP_NOT_AUTHORIZED":
                     processed_cache.add(link)
@@ -1109,7 +1233,8 @@ def main():
         print(f" - Usaha Sudah Diganti (Skip): {skip_diganti_count}")
         print(f" - Bukan Otorisasi (Skip)    : {skip_count}")
         print(f" - Gagal/Error               : {fail_count}")
-        print(f" - File Laporan Rekap        : {REPORT_EXCEL} & {REPORT_JSON}")
+        print(f" - File Laporan Rekap Umum   : {REPORT_EXCEL} & {REPORT_JSON}")
+        print(f" - File Laporan Khusus Skip  : {REPORT_DIGANTI_EXCEL} ({len(diganti_reports_data)} data)")
         print("="*65)
         context.close()
 

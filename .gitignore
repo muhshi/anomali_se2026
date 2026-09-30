@@ -11,6 +11,7 @@ processed_links.json
 processed_status_ditemukan.json
 processed_edit_admin.json
 laporan_status_ditemukan.json
+laporan_usaha_sudah_diganti.json
 
 # Data files
 data/*
