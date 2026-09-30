@@ -132,33 +132,60 @@ def check_usaha_sudah_diganti(page):
     sehingga saat ini tidak ditemukan lagi pada keluarga tersebut.
     """
     try:
-        res = page.evaluate('''() => {
-            const bodyText = (document.body.innerText || '');
-            const bodyLower = bodyText.toLowerCase();
-            const hasKeyword1 = bodyLower.includes('pernah ditautkan') || bodyLower.includes('ditautkan pada usaha');
-            const hasKeyword2 = bodyLower.includes('sudah diganti') || bodyLower.includes('tidak ditemukan lagi pada keluarga') || bodyLower.includes('tidak ditemukan lagi');
-            
-            if (hasKeyword1 && hasKeyword2) {
-                const match = bodyText.match(/(?:[^\n\r]*?pernah ditautkan[^\n\r]*?keluarga tersebut[^\n\r]*)/i);
-                if (match) {
-                    return { detected: true, message: match[0].trim() };
-                }
-                const allElements = Array.from(document.querySelectorAll('div, p, span, [role="alert"], .alert'));
-                const leafElements = allElements.filter(el => {
-                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                    return t.includes('pernah ditautkan') && (t.includes('sudah diganti') || t.includes('tidak ditemukan lagi'));
-                }).sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
+        # 1. Cek langsung via locator Playwright (sangat cepat & mendeteksi langsung di tree DOM)
+        loc = page.locator("text=/pernah ditautkan/i")
+        cnt = loc.count()
+        if cnt > 0:
+            for i in range(cnt):
+                try:
+                    el = loc.nth(i)
+                    full_text = el.text_content() or el.inner_text() or ""
+                    f_lower = full_text.lower()
+                    if "sudah diganti" in f_lower or "tidak ditemukan lagi" in f_lower or "ditautkan pada usaha" in f_lower:
+                        m = re.search(r'([^\n\r]*?pernah ditautkan[^\n\r]*?keluarga tersebut[^\n\r]*)', full_text, re.IGNORECASE)
+                        clean_msg = m.group(1).strip() if m else full_text.strip()
+                        m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', clean_msg, re.IGNORECASE)
+                        fam = m_fam.group(1).strip() if m_fam else ''
+                        return True, clean_msg, fam
+                except Exception:
+                    pass
 
-                if (leafElements.length > 0) {
-                    return { detected: true, message: leafElements[0].innerText.trim() };
+        # 2. Cek via evaluate JS memeriksa textContent dan innerText di seluruh elemen body
+        res = page.evaluate('''() => {
+            const root = document.body;
+            const text = (root.innerText || '') + ' ' + (root.textContent || '');
+            const textLower = text.toLowerCase();
+            const hasKeyword1 = textLower.includes('pernah ditautkan') || textLower.includes('ditautkan pada usaha');
+            const hasKeyword2 = textLower.includes('sudah diganti') || textLower.includes('tidak ditemukan lagi');
+
+            if (hasKeyword1 && hasKeyword2) {
+                const all = Array.from(document.querySelectorAll('*'));
+                const matched = all.filter(el => {
+                    const t = (el.textContent || '').toLowerCase();
+                    return t.includes('pernah ditautkan') && (t.includes('sudah diganti') || t.includes('tidak ditemukan lagi'));
+                }).sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+
+                let msg = '';
+                if (matched.length > 0) {
+                    msg = (matched[0].innerText || matched[0].textContent || '').trim();
+                } else {
+                    const m = text.match(/(?:[^\n\r]*?pernah ditautkan[^\n\r]*?keluarga tersebut[^\n\r]*)/i);
+                    msg = m ? m[0].trim() : "Usaha ini pernah ditautkan pada usaha keluarga, namun usaha yang ditautkan sudah diganti sehingga saat ini tidak ditemukan lagi pada keluarga tersebut.";
                 }
-                return { detected: true, message: "Usaha ini pernah ditautkan pada usaha keluarga, namun usaha yang ditautkan sudah diganti sehingga saat ini tidak ditemukan lagi pada keluarga tersebut." };
+                return { detected: true, message: msg };
             }
             return { detected: false, message: "" };
         }''')
-        return res.get("detected", False), res.get("message", "")
+        if res.get("detected", False):
+            msg = res.get("message", "")
+            m = re.search(r'([^\n\r]*?pernah ditautkan[^\n\r]*?keluarga tersebut[^\n\r]*)', msg, re.IGNORECASE)
+            clean_msg = m.group(1).strip() if m else msg.strip()
+            m_fam = re.search(r'keluarga\s+(.*?)\s*\.\s*Namun', clean_msg, re.IGNORECASE)
+            fam = m_fam.group(1).strip() if m_fam else ''
+            return True, clean_msg, fam
     except Exception:
-        return False, ""
+        pass
+    return False, "", ""
 
 def check_is_bot_or_blocked(page):
     """Mengecek apakah halaman saat ini menunjukkan pesan terdeteksi bot, WAF, atau error SSO."""
@@ -588,25 +615,43 @@ def process_single_assignment(page, item):
         if not menu_clicked:
             print("  -> [Warning] Tampilan belum terkonfirmasi berubah ke form 'SE2026 - P'. Mencoba mencari opsi pertanyaan...")
 
-    time.sleep(1) # Beri jeda form stabil
+    time.sleep(0.5) # Beri jeda form stabil
 
     # Cek apakah ada peringatan bahwa usaha sudah diganti pada form SE2026 - P
-    is_diganti, msg_diganti = check_usaha_sudah_diganti(page)
+    is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
     if is_diganti:
-        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti
+        print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti pada form 'SE2026 - P'.")
+        if fam_diganti:
+            print(f"     Keluarga Pengganti: {fam_diganti}")
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
     # 4. Pilih opsi '1. Ditemukan'
     print("  -> Memilih opsi '1. Ditemukan' pada Keberadaan Bangunan Lainnya/ Usaha...")
     option_selected = False
 
-    # Tunggu beberapa saat jika form sedang proses rendering
-    for _ in range(8):
+    # Tunggu beberapa saat jika form sedang proses rendering, sambil terus cek jika muncul peringatan
+    for _ in range(6):
+        is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
+        if is_diganti:
+            print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti pada form 'SE2026 - P'.")
+            if fam_diganti:
+                print(f"     Keluarga Pengganti: {fam_diganti}")
+            return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
+
         if page.evaluate('''() => {
             const body = (document.body.innerText || '').toLowerCase();
             return body.includes('1. ditemukan') || body.includes('ditemukan');
         }'''):
             break
-        time.sleep(0.5)
+        time.sleep(0.4)
+
+    # Cek sekali lagi sebelum memilih opsi radio
+    is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
+    if is_diganti:
+        print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti pada form 'SE2026 - P'.")
+        if fam_diganti:
+            print(f"     Keluarga Pengganti: {fam_diganti}")
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
     # Coba pendekatan JS cerdas
     select_result = page.evaluate('''() => {
@@ -692,7 +737,15 @@ def process_single_assignment(page, item):
         print(f"  -> [Diagnostic] Elemen di halaman saat ini: {diag_info}")
         raise Exception("Gagal memilih '1. Ditemukan' pada form.")
 
-    time.sleep(1)
+    time.sleep(0.5)
+
+    # Cek apakah ada peringatan usaha sudah diganti sebelum klik Kirim
+    is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
+    if is_diganti:
+        print(f"  -> [SKIP CEPAT] Terdeteksi usaha sudah diganti pada form 'SE2026 - P'.")
+        if fam_diganti:
+            print(f"     Keluarga Pengganti: {fam_diganti}")
+        return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
     # 5. Klik tombol 'Kirim'
     print("  -> Mengklik tombol 'Kirim'...")
