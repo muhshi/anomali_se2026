@@ -81,6 +81,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Menambahkan selector presisi `border-l` (split button di samping tombol Kirim) dan memangkas waktu percobaan pencarian menjadi maksimal 2x percobaan cepat.
   - Menangani kondisi ketiadaan menu 'Submit Paksa' sebagai status `SKIP - TIDAK ADA SUBMIT PAKSA` yang otomatis tersimpan di cache dan laporan tanpa memicu crash/error berulang.
   - Mempercepat jeda (*delay*) perpindahan link untuk data yang di-skip menjadi 1.5 - 3 detik (sebelumnya 6 - 11 detik).
+- **Fix Deteksi Tombol 'Submit Paksa' Non-Modal & Penghapusan Asumsi Dialog**:
+  - Memperbaiki alur penemuan tombol **Submit Paksa** agar memeriksa langsung pada halaman/form (non-modal), tombol split dropdown (titik tiga), maupun setelah tombol Kirim diklik.
+  - Menghilangkan bug `offsetParent !== null` pada JavaScript yang sebelumnya menyebabkan elemen ber-style `position: fixed` (seperti floating action bar Fasih-SM dan popover Radix UI) terabaikan dan dianggap tidak terlihat (*invisible*).
+  - Mengganti deteksi keterlihatan elemen dengan `checkVisibility()` standar W3C dan evaluasi *computed style* + *bounding client rect* yang akurat di browser Chromium.
+  - Menambahkan pemulihan otomatis cache progres dan laporan: 692 data yang sebelumnya keliru di-skip sebagai `SKIP - TIDAK ADA SUBMIT PAKSA` otomatis dipulihkan ke antrean aktif (`Sisa Diproses`) agar dapat diproses kembali hingga tuntas.
 - **Deteksi Cepat & Skip Instan Usaha Sudah Diganti pada Menu SE2026 - P**:
   - Mengintegrasikan pengecekan peringatan "Usaha ini pernah ditautkan... sudah diganti" langsung saat halaman menu `SE2026 - P` terbuka, selama proses render, dan sebelum memilih radio atau mengklik Kirim.
   - Memanfaatkan Playwright locator DOM langsung (`text=/pernah ditautkan/i`) yang bekerja instan (<50ms) dan andal mendeteksi alert banner.

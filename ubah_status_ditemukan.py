@@ -748,82 +748,139 @@ def process_single_assignment(page, item):
             print(f"     Keluarga Pengganti: {fam_diganti}")
         return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
-    # 5. Klik tombol 'Kirim'
-    print("  -> Mengklik tombol 'Kirim'...")
-    kirim_clicked = False
-    for attempt in range(3):
-        try:
-            kirim_btn = page.get_by_role("button", name=re.compile(r"^Kirim$", re.IGNORECASE)).first
-            if kirim_btn.is_visible():
-                kirim_btn.click(timeout=5000)
-                kirim_clicked = True
-                break
-        except Exception:
-            pass
+    # 5. Eksekusi Submit Paksa
+    # Tombol 'Submit Paksa' bisa tersedia langsung di form/halaman (non-modal),
+    # via split dropdown (tombol titik tiga di samping Kirim), atau setelah tombol Kirim diklik.
+    print("  -> Memproses Submit Paksa...")
 
-        # Fallback JS untuk klik tombol Kirim
-        found_kirim_js = page.evaluate('''() => {
-            const btns = Array.from(document.querySelectorAll('button'));
-            const target = btns.find(b => {
-                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return (t === 'kirim' || t.includes('kirim')) && b.offsetParent !== null;
-            });
-            if (target) {
-                target.click();
-                return true;
+    # Pasang helper visibility & event dispatcher di window
+    page.evaluate('''() => {
+        window._isElementVisible = function(el) {
+            if (!el) return false;
+            try {
+                if (typeof el.checkVisibility === 'function') {
+                    if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+                } else {
+                    const style = window.getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+                }
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            } catch (e) {
+                return false;
             }
-            return false;
-        }''')
-        if found_kirim_js:
-            kirim_clicked = True
-            break
-        time.sleep(1)
+        };
 
-    if not kirim_clicked:
-        raise Exception("Gagal mengklik tombol 'Kirim' pada form.")
+        window._findSubmitPaksaEl = function() {
+            const candidates = Array.from(document.querySelectorAll('button, [role="menuitem"], [role="menu"] *, a, div, span')).filter(window._isElementVisible);
+            const matches = candidates.filter(el => {
+                const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                return t === 'submit paksa' || t.includes('submit paksa');
+            });
+            matches.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
+            return matches.length > 0 ? matches[0] : null;
+        };
 
-    time.sleep(1.5) # Tunggu modal muncul
+        window._dispatchClick = function(el) {
+            if (!el) return false;
+            try {
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        };
 
-    # 6. Klik tombol titik tiga (split button dropdown) pada modal
-    print("  -> Mengklik tombol menu titik tiga (split dropdown) pada modal...")
-    
-    # Tunggu modal muncul dan selesai animasi
-    try:
-        page.locator("[role='dialog'], .modal, div[data-state='open']").first.wait_for(state="visible", timeout=5000)
-    except Exception:
-        pass
-    time.sleep(1)
+        window._findSplitDotsButton = function() {
+            const btns = Array.from(document.querySelectorAll('button')).filter(window._isElementVisible);
+            // 1. Tombol di sebelah tombol Kirim (split button)
+            let target = btns.find(b => {
+                const prev = b.previousElementSibling;
+                if (prev && prev.tagName === 'BUTTON') {
+                    const prevText = (prev.innerText || prev.textContent || '').trim().toLowerCase();
+                    if (prevText === 'kirim' || prevText.includes('kirim')) return true;
+                }
+                const c = b.className || '';
+                return c.includes('border-l');
+            });
+            // 2. Tombol dengan icon SVG titik tiga
+            if (!target) {
+                target = btns.find(b => {
+                    const svgs = b.querySelectorAll('svg');
+                    for (const s of svgs) {
+                        const html = s.innerHTML || '';
+                        if (html.includes('circle') || html.includes('M12 12m-1') || html.includes('M12 5m-1') || html.includes('M12 19m-1') || html.includes('more-vertical') || html.includes('dots')) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            }
+            // 3. Tombol dengan class rounded-r-lg
+            if (!target) {
+                target = btns.find(b => (b.className || '').includes('rounded-r-lg'));
+            }
+            return target;
+        };
+    }''')
 
-    dots_clicked = False
+    def check_and_click_submit_paksa():
+        # Coba Playwright selector dulu
+        paksa_locs = [
+            page.locator("button").filter(has_text=re.compile(r"^Submit Paksa$", re.IGNORECASE)),
+            page.locator("[role='menuitem']").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE)),
+            page.get_by_role("button", name=re.compile(r"Submit Paksa", re.IGNORECASE)),
+            page.get_by_text(re.compile(r"^Submit Paksa$", re.IGNORECASE)),
+            page.locator("button, a, div, span").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE))
+        ]
+        for loc in paksa_locs:
+            try:
+                cnt = loc.count()
+                if cnt > 0:
+                    for i in range(cnt):
+                        el = loc.nth(i)
+                        if el.is_visible():
+                            box = el.bounding_box()
+                            if box and box["width"] > 0 and box["height"] > 0:
+                                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                                return True
+                            else:
+                                el.click(timeout=1000, force=True)
+                                return True
+            except Exception:
+                pass
 
-    def is_menu_open():
+        # Fallback JS dispatch click
         try:
             return page.evaluate('''() => {
-                const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="menu"] *, div, button, span'));
-                return items.some(el => {
-                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                    return t.includes('submit paksa') && el.offsetParent !== null;
-                });
+                const el = window._findSubmitPaksaEl();
+                if (el) {
+                    return window._dispatchClick(el);
+                }
+                return false;
             }''')
         except Exception:
             return False
 
-    split_selectors = [
-        page.locator("button.tw\\:border-l, button[class*='border-l']"),
-        page.locator("button:has(svg path[d*='M12 12m-1'])"),
-        page.locator("button.tw\\:rounded-r-lg, button[class*='rounded-r-lg']"),
-        page.locator("[role='dialog'] button.tw\\:border-l, [role='dialog'] button[class*='border-l']"),
-        page.locator("[role='dialog'] button:has(svg)")
-    ]
-
-    for attempt in range(2):
-        if is_menu_open():
-            dots_clicked = True
-            print("     [OK] Menu 'Submit Paksa' sudah muncul.")
-            break
-
-        # 1. Coba klik via Playwright native mouse click pada bounding box tombol
-        clicked_via_pw = False
+    def click_split_dots_button():
+        split_selectors = [
+            page.locator("button:has-text('Kirim') + button"),
+            page.locator("button:has-text('Kirim') ~ button"),
+            page.locator("button.tw\\:border-l, button[class*='border-l']"),
+            page.locator("button.tw\\:rounded-r-lg, button[class*='rounded-r-lg']"),
+            page.locator("button:has(svg path[d*='M12 12m-1'])"),
+            page.locator("button:has(svg path[d*='M12 5m-1'])"),
+            page.locator("button:has(svg circle)")
+        ]
         for loc in split_selectors:
             try:
                 cnt = loc.count()
@@ -832,78 +889,93 @@ def process_single_assignment(page, item):
                         el = loc.nth(i)
                         if el.is_visible():
                             box = el.bounding_box()
-                            if box and box["width"] > 0:
+                            if box and box["width"] > 0 and box["height"] > 0:
                                 page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                                clicked_via_pw = True
-                                break
+                                return True
                             else:
                                 el.click(timeout=1000, force=True)
-                                clicked_via_pw = True
-                                break
-                    if clicked_via_pw:
-                        break
+                                return True
             except Exception:
                 pass
 
-        time.sleep(0.5)
-        if is_menu_open():
-            dots_clicked = True
-            print("     [OK] Menu titik tiga berhasil dibuka via Playwright mouse click.")
-            break
+        # Fallback JS
+        try:
+            return page.evaluate('''() => {
+                const target = window._findSplitDotsButton();
+                if (target) {
+                    return window._dispatchClick(target);
+                }
+                return false;
+            }''')
+        except Exception:
+            return False
 
-        # 2. Coba klik via JS dengan event simulation lengkap (pointerdown -> mousedown -> click)
-        page.evaluate('''() => {
-            const btns = Array.from(document.querySelectorAll('button'));
-            
-            // Prioritas 1: Button border-l (split button di sebelah kanan tombol Kirim)
-            let target = btns.find(b => {
-                const c = b.className || '';
-                return c.includes('border-l') && b.offsetParent !== null;
-            });
+    def click_kirim_button():
+        try:
+            kirim_btn = page.get_by_role("button", name=re.compile(r"^Kirim$", re.IGNORECASE)).first
+            if kirim_btn.is_visible():
+                kirim_btn.click(timeout=4000)
+                return True
+        except Exception:
+            pass
 
-            // Prioritas 2: Button rounded-r-lg
-            if (!target) {
-                target = btns.find(b => {
-                    const c = b.className || '';
-                    return c.includes('rounded-r-lg') && b.offsetParent !== null;
+        try:
+            return page.evaluate('''() => {
+                const btns = Array.from(document.querySelectorAll('button')).filter(window._isElementVisible);
+                const target = btns.find(b => {
+                    const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                    return t === 'kirim' || t.includes('kirim');
                 });
-            }
+                if (target) {
+                    return window._dispatchClick(target);
+                }
+                return false;
+            }''')
+        except Exception:
+            return False
 
-            if (!target) {
-                target = btns.find(b => {
-                    const svgs = b.querySelectorAll('svg');
-                    for (const s of svgs) {
-                        const html = s.innerHTML || '';
-                        if (html.includes('circle') || html.includes('M12 12m-1') || html.includes('M12 5m-1') || html.includes('M12 19m-1')) {
-                            return true;
-                        }
-                    }
-                    return false;
-                });
-            }
+    submit_paksa_clicked = False
 
-            if (target) {
-                target.scrollIntoView({ behavior: 'instant', block: 'center' });
-                const rect = target.getBoundingClientRect();
-                const x = rect.left + rect.width / 2;
-                const y = rect.top + rect.height / 2;
-                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-                
-                target.dispatchEvent(new PointerEvent('pointerdown', opts));
-                target.dispatchEvent(new MouseEvent('mousedown', opts));
-                target.dispatchEvent(new PointerEvent('pointerup', opts));
-                target.dispatchEvent(new MouseEvent('mouseup', opts));
-                target.click();
-            }
-        }''')
+    # Langkah 1: Cek apakah tombol "Submit Paksa" sudah ada langsung di form/halaman (non-modal)
+    if check_and_click_submit_paksa():
+        submit_paksa_clicked = True
+        print("     [OK] Tombol 'Submit Paksa' ditemukan langsung pada halaman dan diklik.")
 
-        time.sleep(0.5)
-        if is_menu_open():
-            dots_clicked = True
-            print("     [OK] Menu titik tiga berhasil dibuka via JS event simulation.")
-            break
+    # Langkah 2: Jika belum, coba klik tombol split dropdown (titik tiga)
+    if not submit_paksa_clicked:
+        print("  -> Mengklik tombol menu titik tiga (split dropdown)...")
+        if click_split_dots_button():
+            time.sleep(0.8)
+            if check_and_click_submit_paksa():
+                submit_paksa_clicked = True
+                print("     [OK] Berhasil mengklik 'Submit Paksa' via split dropdown.")
 
-    if not is_menu_open():
+    # Langkah 3: Jika belum muncul, klik tombol 'Kirim' lalu cari lagi
+    if not submit_paksa_clicked:
+        print("  -> Mengklik tombol 'Kirim'...")
+        click_kirim_button()
+        time.sleep(1.2)
+
+        # Cek apakah setelah klik Kirim, tombol 'Submit Paksa' langsung muncul (baik di dialog maupun non-modal)
+        if check_and_click_submit_paksa():
+            submit_paksa_clicked = True
+            print("     [OK] Tombol 'Submit Paksa' ditemukan setelah klik Kirim dan diklik.")
+        else:
+            # Cek apakah ada tombol split dropdown yang muncul setelah klik Kirim
+            if click_split_dots_button():
+                time.sleep(0.8)
+                if check_and_click_submit_paksa():
+                    submit_paksa_clicked = True
+                    print("     [OK] Berhasil mengklik 'Submit Paksa' via split dropdown setelah Kirim.")
+
+    # Langkah 4: Cek ulang sekali lagi dengan jeda sedikit
+    if not submit_paksa_clicked:
+        time.sleep(1.0)
+        if check_and_click_submit_paksa():
+            submit_paksa_clicked = True
+            print("     [OK] Tombol 'Submit Paksa' berhasil diklik pada pengecekan ulang.")
+
+    if not submit_paksa_clicked:
         # Cek apakah ada peringatan usaha sudah diganti yang baru terdeteksi
         is_diganti, msg_diganti, fam_diganti = check_usaha_sudah_diganti(page)
         if is_diganti:
@@ -912,81 +984,31 @@ def process_single_assignment(page, item):
                 print(f"     Keluarga Pengganti: {fam_diganti}")
             return "SKIP_USAHA_SUDAH_DIGANTI", msg_diganti, fam_diganti
 
-        print("  -> [SKIP] Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal.")
-        return "SKIP_NO_SUBMIT_PAKSA", "Tombol titik tiga / menu 'Submit Paksa' tidak tersedia pada modal"
-
-    # 7. Klik menu item 'Submit Paksa'
-    print("  -> Mengklik 'Submit Paksa'...")
-    submit_paksa_clicked = False
-
-    paksa_locators = [
-        page.locator("[role='menuitem']").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE)),
-        page.get_by_text(re.compile(r"^Submit Paksa$", re.IGNORECASE)),
-        page.locator("div, button, a, span").filter(has_text=re.compile(r"Submit Paksa", re.IGNORECASE))
-    ]
-
-    for loc in paksa_locators:
-        try:
-            cnt = loc.count()
-            if cnt > 0:
-                for i in range(cnt):
-                    el = loc.nth(i)
-                    if el.is_visible():
-                        box = el.bounding_box()
-                        if box:
-                            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        else:
-                            el.click(timeout=2000, force=True)
-                        submit_paksa_clicked = True
-                        print("     [OK] Berhasil mengklik 'Submit Paksa' via Playwright.")
-                        break
-            if submit_paksa_clicked:
-                break
-        except Exception:
-            pass
-
-    if not submit_paksa_clicked:
-        found_paksa_js = page.evaluate('''() => {
-            const items = Array.from(document.querySelectorAll('[role="menuitem"], div, button, span'));
-            const target = items.find(el => {
-                const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                return t.includes('submit paksa') && el.offsetParent !== null;
-            });
-            if (target) {
-                target.scrollIntoView({ behavior: 'instant', block: 'center' });
-                const rect = target.getBoundingClientRect();
-                const x = rect.left + rect.width / 2;
-                const y = rect.top + rect.height / 2;
-                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-                
-                target.dispatchEvent(new PointerEvent('pointerdown', opts));
-                target.dispatchEvent(new MouseEvent('mousedown', opts));
-                target.dispatchEvent(new PointerEvent('pointerup', opts));
-                target.dispatchEvent(new MouseEvent('mouseup', opts));
-                target.click();
-                return true;
-            }
-            return false;
-        }''')
-        if found_paksa_js:
-            submit_paksa_clicked = True
-            print("     [OK] Berhasil mengklik 'Submit Paksa' via JS simulation.")
-
-    if not submit_paksa_clicked:
-        raise Exception("Gagal mengklik menu 'Submit Paksa'.")
+        print("  -> [SKIP] Tombol titik tiga / menu 'Submit Paksa' tidak tersedia.")
+        return "SKIP_NO_SUBMIT_PAKSA", "Tombol titik tiga / menu 'Submit Paksa' tidak tersedia"
 
     time.sleep(1.5)
 
-    # 8. Cek dan tangani dialog konfirmasi lanjutan jika ada
+    # 6. Cek dan tangani dialog konfirmasi lanjutan jika ada
     # (Misal: 'Apakah Anda yakin ingin submit paksa?', tombol 'Ya' / 'Konfirmasi' / 'Submit')
     try:
         page.evaluate('''() => {
-            const btns = Array.from(document.querySelectorAll('button'));
+            const btns = Array.from(document.querySelectorAll('button')).filter(window._isElementVisible || (el => true));
             const confirmBtn = btns.find(b => {
                 const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return (t === 'ya' || t === 'konfirmasi' || t === 'submit' || t === 'setuju' || t.includes('ya, submit')) && b.offsetParent !== null;
+                return (
+                    t === 'ya' || 
+                    t === 'konfirmasi' || 
+                    t === 'submit' || 
+                    t === 'setuju' || 
+                    t === 'lanjutkan' || 
+                    t.includes('ya, submit') || 
+                    t.includes('ya, simpan') || 
+                    t.includes('ya, lanjutkan')
+                );
             });
             if (confirmBtn) {
+                confirmBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
                 confirmBtn.click();
             }
         }''')
@@ -1106,6 +1128,19 @@ def main():
     active_data = select_kabupaten(rows_data)
 
     processed_cache = load_cache()
+    reports_data = load_reports()
+
+    # Bersihkan cache untuk item yang sebelumnya keliru di-skip karena tidak terdeteksi Submit Paksa (bug modal/offsetParent)
+    faulty_links = set(r.get("link") for r in reports_data if r.get("status") == "SKIP - TIDAK ADA SUBMIT PAKSA")
+    if faulty_links:
+        cleaned_cache = processed_cache - faulty_links
+        if len(cleaned_cache) != len(processed_cache):
+            save_cache(cleaned_cache)
+            processed_cache = cleaned_cache
+            reports_data = [r for r in reports_data if r.get("status") != "SKIP - TIDAK ADA SUBMIT PAKSA"]
+            save_report(reports_data)
+            print(f"\n[Info] {len(faulty_links)} data yang sebelumnya keliru di-skip (Submit Paksa non-modal) telah dipulihkan dari cache dan siap diproses!")
+
     pending_items = [item for item in active_data if item["link"] not in processed_cache]
     already_done = len(active_data) - len(pending_items)
     pct = (already_done / len(active_data) * 100) if active_data else 0.0
@@ -1267,7 +1302,7 @@ def main():
                         "nama": nama,
                         "link": link,
                         "status": "SKIP - TIDAK ADA SUBMIT PAKSA",
-                        "keterangan": "Tombol titik tiga / menu Submit Paksa tidak muncul pada modal",
+                        "keterangan": "Tombol titik tiga / menu Submit Paksa tidak tersedia",
                         "detail_pesan": msg
                     })
                     print(f"  -> [SKIP] Ditandai di cache (Tidak ada menu 'Submit Paksa').")
