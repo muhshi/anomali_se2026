@@ -55,10 +55,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
   - Mengotomatisasi perubahan rincian pertanyaan **8. d. Jenis kawasan beroperasi** dari kode **1. Kawasan Ekonomi Khusus (KEK)** menjadi kode **10. Diluar kawasan** (atau Di luar kawasan).
   - Alur otomatisasi:
     1. Membuka link assignment `/edit`.
-    2. Membuka tab menu **SE2026 - P**.
-    3. Mencari pertanyaan 8.d dan memilih opsi `10. Diluar kawasan` (mendukung radio button, native select, maupun custom combobox/dropdown).
-    4. Membersihkan field *Nama kawasan* (8.e) jika masih terisi/aktif.
-    5. Mengklik tombol **Kirim** dan menyelesaikan konfirmasi modal (serta menangani split button Submit Paksa bila diperlukan).
+    2. Membuka menu rincian usaha yang berada tepat **di bawah 'SE2026 - P'** (mencocokkan nama usaha / sibling menu di sidebar).
+    3. Melakukan scroll bertahap ke bawah pada form agar blok pertanyaan 8 termuat sepenuhnya di DOM.
+    4. Mencari pertanyaan 8.d dan memilih opsi `10. Diluar kawasan` (mendukung radio button, native select, maupun custom combobox/dropdown).
+    5. Membersihkan field *Nama kawasan* (8.e) jika masih terisi/aktif.
+    6. Mengklik tombol **Kirim** dan menyelesaikan konfirmasi modal (serta menangani split button Submit Paksa bila diperlukan).
   - Dilengkapi fitur pemilihan filter wilayah Kecamatan interaktif (misal Bonang, Sayung, atau Semua).
   - Dilengkapi cache progres mandiri `processed_jenis_kawasan.json` agar pengerjaan yang terputus dapat dilanjutkan tanpa mengulang link yang sukses.
   - Dilengkapi pencatatan laporan rekap Excel `laporan_jenis_kawasan.xlsx` dan JSON `laporan_jenis_kawasan.json`.

@@ -287,66 +287,175 @@ def resolve_bot_detection(page, target_link):
 # LOGIKA INTI PERUBAHAN FORM FASIH-SM
 # ==============================================================================
 
-def open_menu_se2026_p(page):
-    """Membuka atau memastikan form 'SE2026 - P' aktif."""
-    def is_form_rendered():
-        try:
-            return page.evaluate('''() => {
-                const text = (document.body.innerText || '').toLowerCase();
-                return text.includes("keberadaan bangunan") || 
-                       text.includes("jenis kawasan") || 
-                       text.includes("kawasan beroperasi") ||
-                       text.includes("1. ditemukan");
-            }''')
-        except Exception:
-            return False
+def open_menu_usaha_bawah_p(page, item):
+    """
+    Membuka menu di bawah 'SE2026 - P' (menu rincian usaha/perusahaan).
+    Prioritas:
+    1. Mencari menu yang memuat nama usaha (misal: 'TOKO IBU KARTINI').
+    2. Mencari elemen menu/tab yang berada tepat di bawah 'SE2026 - P' pada sidebar.
+    3. Mencari menu berawalan '1.' atau 'SE2026 - U' atau 'Usaha'.
+    """
+    nama_usaha = item.get("nama_usaha", "").strip()
 
-    if is_form_rendered():
-        return True
+    # Dapatkan daftar semua menu di sidebar untuk diagnostik dan pencarian
+    menu_info = page.evaluate('''(namaUsaha) => {
+        function getCleanText(el) {
+            return (el.innerText || el.textContent || '').trim();
+        }
 
-    pattern = re.compile(r"SE2026\s*[-–—]?\s*P", re.IGNORECASE)
-    candidates = [
-        page.get_by_role("tab", name=pattern),
-        page.get_by_role("link", name=pattern),
-        page.get_by_role("button", name=pattern),
-        page.locator("a, button, [role='tab'], [role='menuitem'], [role='treeitem'], li").filter(has_text=pattern),
-        page.locator("[title*='SE2026 - P'], [title*='SE2026-P'], [title*='SE2026']")
-    ]
-    for cand in candidates:
-        try:
-            cnt = cand.count()
-            if cnt > 0:
-                for i in range(cnt):
-                    el = cand.nth(i)
-                    if el.is_visible():
-                        box = el.bounding_box()
-                        if box:
-                            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        else:
-                            el.click(timeout=3000)
-                        time.sleep(1.5)
-                        if is_form_rendered():
-                            return True
-        except Exception:
-            pass
-
-    # Fallback JS Deep Click
-    page.evaluate('''() => {
         const all = Array.from(document.querySelectorAll('*'));
-        const matches = all.filter(el => {
-            const txt = (el.innerText || el.textContent || '').trim();
-            return /SE2026\s*[-–—]?\s*P/i.test(txt);
+        
+        // 1. Ambil daftar semua teks item di sidebar / nav / aside
+        const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul'));
+        let menuTexts = [];
+        sidebarEls.forEach(s => {
+            const children = Array.from(s.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[class*="item"]'));
+            children.forEach(c => {
+                const t = getCleanText(c);
+                if (t && t.length < 60 && !menuTexts.includes(t)) {
+                    menuTexts.push(t);
+                }
+            });
         });
-        if (matches.length > 0) {
-            matches.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length);
-            const leaf = matches[0];
-            const clickable = leaf.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || leaf;
+
+        // 2. Coba cocokkan dengan nama usaha langsung
+        if (namaUsaha) {
+            const uClean = namaUsaha.toLowerCase().trim();
+            const matchedLeafs = all.filter(el => {
+                const t = getCleanText(el).toLowerCase();
+                return (t === uClean || t.includes(uClean)) &&
+                       !Array.from(el.children).some(c => getCleanText(c).toLowerCase().includes(uClean));
+            });
+            if (matchedLeafs.length > 0) {
+                const target = matchedLeafs[0];
+                const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || target;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                clickable.click();
+                return {
+                    success: true,
+                    menu: getCleanText(clickable),
+                    method: 'by_nama_usaha',
+                    allMenus: menuTexts.slice(0, 20)
+                };
+            }
+        }
+
+        // 3. Cari elemen 'SE2026 - P'
+        const pLeafs = all.filter(el => {
+            const t = getCleanText(el);
+            return /SE2026\s*[-–—]?\s*P/i.test(t) &&
+                   !Array.from(el.children).some(c => /SE2026\s*[-–—]?\s*P/i.test(getCleanText(c)));
+        });
+
+        if (pLeafs.length > 0) {
+            pLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
+            const pLeaf = pLeafs[0];
+            const pClickable = pLeaf.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[class*="item"]') || pLeaf;
+
+            // Cari container sidebar tempat P berada
+            const sidebar = pLeaf.closest('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul') || document.body;
+            const sidebarItems = Array.from(sidebar.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[tabindex]')).filter(el => {
+                const t = getCleanText(el);
+                return t.length > 0 && t.length < 70 && el.offsetParent !== null;
+            });
+
+            // Temukan index P dalam sidebarItems
+            const pIndex = sidebarItems.findIndex(el => /SE2026\s*[-–—]?\s*P/i.test(getCleanText(el)));
+            if (pIndex !== -1 && pIndex + 1 < sidebarItems.length) {
+                const nextItem = sidebarItems[pIndex + 1];
+                const targetClick = nextItem.querySelector('a, button, [role="tab"], [role="treeitem"], [role="menuitem"]') || nextItem;
+                targetClick.scrollIntoView({ behavior: 'instant', block: 'center' });
+                targetClick.click();
+                return {
+                    success: true,
+                    menu: getCleanText(targetClick),
+                    method: 'item_below_p',
+                    allMenus: menuTexts.slice(0, 20)
+                };
+            }
+
+            // Jika P adalah accordion yang tertutup, coba klik P sekali lalu cari lagi child/sibling berikutnya
+            let sibling = pClickable.nextElementSibling || pClickable.parentElement?.nextElementSibling;
+            if (sibling) {
+                const targetClick = sibling.querySelector('a, button, [role="tab"], [role="treeitem"], [role="menuitem"]') || sibling;
+                targetClick.scrollIntoView({ behavior: 'instant', block: 'center' });
+                targetClick.click();
+                return {
+                    success: true,
+                    menu: getCleanText(targetClick),
+                    method: 'sibling_below_p',
+                    allMenus: menuTexts.slice(0, 20)
+                };
+            }
+        }
+
+        // 4. Fallback: Cari menu dengan pola '1. ' atau 'Usaha' atau 'SE2026 - U'
+        const candidateLeafs = all.filter(el => {
+            const t = getCleanText(el);
+            return (/^(?:1\.|usaha|se2026\s*[-–—]?\s*u)/i.test(t) || /rincian\s+usaha/i.test(t)) &&
+                   !Array.from(el.children).some(c => (/^(?:1\.|usaha|se2026\s*[-–—]?\s*u)/i.test(getCleanText(c))));
+        });
+        if (candidateLeafs.length > 0) {
+            candidateLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
+            const target = candidateLeafs[0];
+            const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li') || target;
             clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
             clickable.click();
+            return {
+                success: true,
+                menu: getCleanText(clickable),
+                method: 'fallback_candidate',
+                allMenus: menuTexts.slice(0, 20)
+            };
         }
+
+        return { success: false, allMenus: menuTexts.slice(0, 20) };
+    }''', nama_usaha)
+
+    if menu_info and menu_info.get("success"):
+        menu_name = menu_info.get("menu", "")
+        method = menu_info.get("method", "")
+        print(f"     [OK] Berhasil mengklik menu bawah: '{menu_name}' ({method})")
+        time.sleep(1.5)
+        return True
+    else:
+        all_m = menu_info.get("allMenus", []) if menu_info else []
+        print(f"     [Info] Menu sidebar terdeteksi: {all_m}")
+        return False
+
+def scroll_form_down(page):
+    """
+    Scroll ke bawah pada form / halaman Fasih-SM agar pertanyaan 8.d termuat dan tampil.
+    Melakukan scroll bertahap pada window maupun elemen container scrollable.
+    """
+    for step in range(1, 5):
+        page.evaluate('''(stepNum) => {
+            // Scroll window bertahap
+            window.scrollBy(0, 1000 * stepNum);
+            
+            // Scroll semua elemen container scrollable (div overflow, form, main)
+            const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+                const style = window.getComputedStyle(el);
+                return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+            });
+            scrollables.forEach(s => {
+                s.scrollTop = s.scrollHeight * (stepNum / 4);
+            });
+        }''', step)
+        time.sleep(0.4)
+
+    # Scroll penuh ke bawah sekali lagi
+    page.evaluate('''() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+        const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+            const style = window.getComputedStyle(el);
+            return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+        });
+        scrollables.forEach(s => {
+            s.scrollTop = s.scrollHeight;
+        });
     }''')
-    time.sleep(2)
-    return is_form_rendered()
+    time.sleep(0.6)
 
 def change_jenis_kawasan_to_10(page):
     """
@@ -650,8 +759,17 @@ def click_kirim_and_confirm(page):
     return True, "Berhasil dikirim dan dikonfirmasi"
 
 def process_single_assignment(page, item):
-    """Memproses satu assignment: buka /edit, buka SE2026-P, ubah 8.d ke kode 10, simpan."""
+    """
+    Memproses satu assignment:
+    1. Buka link /edit
+    2. Buka menu usaha di bawah 'SE2026 - P'
+    3. Scroll form ke bawah agar pertanyaan 8.d termuat
+    4. Ubah 8. d. Jenis kawasan beroperasi ke '10. Diluar kawasan'
+    5. Bersihkan nama kawasan (8.e) jika masih terisi
+    6. Simpan / Kirim form dan selesaikan konfirmasi
+    """
     link = item["link"]
+    nama_usaha = item.get("nama_usaha", "")
 
     try:
         page.goto(link, wait_until="networkidle", timeout=30000)
@@ -670,30 +788,46 @@ def process_single_assignment(page, item):
         print(f"  -> [SKIP] Dialihkan ke {current_url}. Bukan wilayah tugas Anda / form terkunci.")
         return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
 
-    # 1. Buka menu 'SE2026 - P'
-    print("  -> Memeriksa dan membuka tab menu 'SE2026 - P'...")
-    menu_ok = open_menu_se2026_p(page)
+    time.sleep(1.0)
+
+    # 1. Buka menu di bawah 'SE2026 - P' (Menu Usaha)
+    print(f"  -> Membuka menu usaha di bawah 'SE2026 - P' (Target: '{nama_usaha}')...")
+    menu_ok = open_menu_usaha_bawah_p(page, item)
     if not menu_ok:
-        print("  -> [Warning] Tampilan belum terkonfirmasi berubah ke 'SE2026 - P'. Mencoba mencari pertanyaan...")
+        print("  -> [Warning] Menu bawah belum terkonfirmasi terbuka. Mencoba sekali lagi setelah jeda...")
+        time.sleep(1.5)
+        menu_ok = open_menu_usaha_bawah_p(page, item)
 
     time.sleep(1.0)
 
-    # 2. Ubah pertanyaan 8.d Jenis Kawasan ke '10. Diluar kawasan'
+    # 2. Scroll ke bawah agar pertanyaan 8.d termuat di DOM
+    print("  -> Melakukan scroll ke bawah pada form...")
+    scroll_form_down(page)
+
+    # 3. Ubah pertanyaan 8.d Jenis Kawasan ke '10. Diluar kawasan'
     print("  -> Mencari pertanyaan '8. d. Jenis kawasan beroperasi' dan memilih '10. Diluar kawasan'...")
     res_change = change_jenis_kawasan_to_10(page)
 
     if not res_change or not res_change.get("success"):
-        # Coba scroll ke bawah form dan coba sekali lagi jika form lazy-loaded
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-        time.sleep(1.0)
+        # Jika belum ditemukan, coba scroll lebih lanjut dan coba lagi
+        print("  -> Mencoba scroll ulang dan mencari kembali opsi 10...")
+        scroll_form_down(page)
         res_change = change_jenis_kawasan_to_10(page)
 
     if not res_change or not res_change.get("success"):
         diag = page.evaluate('''() => {
-            const text = (document.body.innerText || '').substring(0, 500);
-            return { currentUrl: window.location.href, preview: text };
+            const sidebars = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'))
+                .flatMap(s => Array.from(s.querySelectorAll('a, button, [role="tab"], li')))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t.length > 0 && t.length < 50);
+            const titles = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, label, legend, p'))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t.length > 0 && (t.includes('8') || t.includes('kawasan') || t.includes('usaha')))
+                .slice(0, 15);
+            return { currentUrl: window.location.href, sidebars: Array.from(new Set(sidebars)).slice(0, 10), titles: titles };
         }''')
-        print(f"  -> [GAGAL] Opsi '10. Diluar kawasan' tidak ditemukan pada form. (URL: {diag.get('currentUrl')})")
+        print(f"  -> [GAGAL] Opsi '10. Diluar kawasan' tidak ditemukan pada form.")
+        print(f"     Diagnostik: Menu Sidebar={diag.get('sidebars')}, Teks Form={diag.get('titles')}")
         return "FAILED_LOCATING_OPTION", "Tidak dapat menemukan opsi '10. Diluar kawasan'"
 
     method = res_change.get("method", "unknown")
@@ -703,7 +837,20 @@ def process_single_assignment(page, item):
     else:
         print(f"     [OK] Berhasil memilih opsi '10. Diluar kawasan' ({method}).")
 
-    # 3. Klik Kirim dan Konfirmasi
+    time.sleep(0.5)
+
+    # 4. Scroll ke bagian tombol Kirim di bawah
+    page.evaluate('''() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+        const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+            const style = window.getComputedStyle(el);
+            return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+        });
+        scrollables.forEach(s => { s.scrollTop = s.scrollHeight; });
+    }''')
+    time.sleep(0.5)
+
+    # 5. Klik Kirim dan Konfirmasi
     print("  -> Menyimpan dan mengirimkan form...")
     kirim_ok, msg_kirim = click_kirim_and_confirm(page)
     if not kirim_ok:
