@@ -373,57 +373,95 @@ def open_menu_blok_ii(page):
 
 def click_lihat_rincian(page, nama_usaha=""):
     """
-    Mengklik tombol 'Lihat Rincian' pada menu SE2026 - L BLOK II.
+    Mengklik tombol oranye 'Lihat Rincian' pada menu SE2026 - L BLOK II.
     Mendukung:
     - Tombol 'Lihat Rincian' pada baris tabel/kartu sesuai nama usaha
-    - Tombol 'Lihat Rincian' langsung pada halaman
+    - Tombol 'Lihat Rincian' langsung pada halaman via Playwright & DOM
+    - Fallback sub-menu nama usaha di sidebar kiri
     """
     time.sleep(1.0)
+    clean_usaha = nama_usaha.strip()
+
+    # 1. Coba klik langsung dengan Playwright locator berbasis card/container
+    if clean_usaha:
+        try:
+            card_btn = page.locator("div, tr, li").filter(has_text=re.compile(re.escape(clean_usaha), re.IGNORECASE)).locator("button, [role='button'], a").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
+            if card_btn.is_visible():
+                card_btn.scroll_into_view_if_needed(timeout=2000)
+                card_btn.click(timeout=3000)
+                print(f"     [OK] Tombol oranye 'Lihat Rincian' pada usaha '{clean_usaha}' berhasil diklik via Playwright card locator.")
+                time.sleep(2.0)
+                return True
+        except Exception:
+            pass
+
+    # 2. Coba klik langsung tombol dengan teks 'Lihat Rincian' di seluruh halaman
+    try:
+        global_btn = page.locator("button, [role='button'], a").filter(has_text=re.compile(r"^Lihat\s*Rincian$", re.IGNORECASE)).first
+        if not global_btn.is_visible():
+            global_btn = page.locator("button, [role='button'], a").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
+        if global_btn.is_visible():
+            global_btn.scroll_into_view_if_needed(timeout=2000)
+            global_btn.click(timeout=3000)
+            print("     [OK] Tombol oranye 'Lihat Rincian' berhasil diklik via Playwright locator.")
+            time.sleep(2.0)
+            return True
+    except Exception:
+        pass
+
+    # 3. Evaluasi JavaScript DOM yang presisi (HANYA mencari tag button, a, [role='button'], BUKAN container div)
     for attempt in range(3):
         res = page.evaluate('''(namaUsaha) => {
             function getCleanText(el) {
                 return (el.innerText || el.textContent || '').trim();
             }
 
-            const all = Array.from(document.querySelectorAll('*'));
+            function clickElement(el) {
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+            }
 
-            // 1. Cek baris tabel atau card yang memuat nama usaha
+            // A. Cari tombol 'Lihat Rincian' di dalam kartu usaha yang cocok
             if (namaUsaha) {
                 const uClean = namaUsaha.toLowerCase().trim();
-                const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"], div[class*="shadow"]'));
+                const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"]'));
                 for (const c of containers) {
                     const cText = getCleanText(c).toLowerCase();
                     if (cText.includes(uClean)) {
-                        const btn = Array.from(c.querySelectorAll('button, a, [role="button"], span, div')).find(el => {
-                            const t = getCleanText(el).toLowerCase();
-                            return t === 'lihat rincian' || t.includes('lihat rincian') || t === 'rincian';
+                        // HANYA query button, a, role=button (JANGAN span atau div agar tidak mengklik kartu luar)
+                        const btns = Array.from(c.querySelectorAll('button, a, [role="button"]'));
+                        const targetBtn = btns.find(b => {
+                            const t = getCleanText(b).toLowerCase();
+                            return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'lihat') && t.length < 30;
                         });
-                        if (btn) {
-                            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                            btn.click();
-                            return { success: true, method: 'row_nama_usaha', text: getCleanText(btn) };
+                        if (targetBtn) {
+                            clickElement(targetBtn);
+                            return { success: true, method: 'card_button_match', text: getCleanText(targetBtn) };
                         }
                     }
                 }
             }
 
-            // 2. Cari semua elemen dengan teks persis atau mengandung 'Lihat Rincian'
-            const rincianLeafs = all.filter(el => {
-                const t = getCleanText(el).toLowerCase();
-                return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'rincian') &&
-                       !Array.from(el.children).some(c => (getCleanText(c).toLowerCase().includes('lihat rincian') || getCleanText(c).toLowerCase() === 'rincian'));
+            // B. Cari SEMUA tombol di halaman yang bertuliskan 'Lihat Rincian'
+            const allBtns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+            const rincianBtn = allBtns.find(b => {
+                const t = getCleanText(b).toLowerCase();
+                return (t === 'lihat rincian' || t.includes('lihat rincian') || t.includes('lihat')) && t.length < 30;
             });
-
-            if (rincianLeafs.length > 0) {
-                rincianLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
-                const target = rincianLeafs.find(el => el.offsetParent !== null) || rincianLeafs[0];
-                const clickable = target.closest('button, a, [role="button"], tr, div') || target;
-                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
-                clickable.click();
-                return { success: true, method: 'direct_rincian_btn', text: getCleanText(clickable) };
+            if (rincianBtn) {
+                clickElement(rincianBtn);
+                return { success: true, method: 'global_button_match', text: getCleanText(rincianBtn) };
             }
 
-            // 3. Fallback: Cari nama usaha di sub-menu sidebar (di bawah SE2026 - L BLOK II)
+            // C. Fallback: Cari nama usaha di sub-menu sidebar (di bawah SE2026 - L BLOK II)
             if (namaUsaha) {
                 const uClean = namaUsaha.toLowerCase().trim();
                 const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'));
@@ -434,18 +472,17 @@ def click_lihat_rincian(page, nama_usaha=""):
                     });
                     if (items.length > 0) {
                         const clickEl = items[0].closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li') || items[0];
-                        clickEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-                        clickEl.click();
+                        clickElement(clickEl);
                         return { success: true, method: 'sidebar_submenu_nama_usaha', text: getCleanText(clickEl) };
                     }
                 }
             }
 
             return { success: false };
-        }''', nama_usaha)
+        }''', clean_usaha)
 
         if res and res.get("success"):
-            print(f"     [OK] Berhasil mengklik tombol '{res.get('text')}' ({res.get('method')})")
+            print(f"     [OK] Berhasil mengklik tombol oranye '{res.get('text')}' ({res.get('method')})")
             time.sleep(2.0)
             return True
         time.sleep(1.0)
