@@ -793,17 +793,121 @@ def change_jenis_kawasan_to_10(page):
 
     return res
 
+def open_menu_catatan(page):
+    """Membuka menu 'Catatan' di sidebar."""
+    print("  -> Membuka menu Catatan...")
+    for attempt in range(3):
+        try:
+            page.get_by_role("tab", name=re.compile(r"Catatan", re.IGNORECASE)).click(timeout=3000)
+            time.sleep(1.5)
+            return True
+        except Exception:
+            pass
+
+        try:
+            catatan_btn = page.locator("a, button, [role='tab'], li").filter(has_text=re.compile(r"^Catatan$", re.IGNORECASE)).first
+            if catatan_btn.is_visible():
+                catatan_btn.click(timeout=3000)
+                time.sleep(1.5)
+                return True
+        except Exception:
+            pass
+
+        res = page.evaluate('''() => {
+            const all = Array.from(document.querySelectorAll('*'));
+            const matches = all.filter(el => {
+                const t = (el.innerText || el.textContent || '').trim();
+                return /^catatan$/i.test(t) && !Array.from(el.children).some(c => /^catatan$/i.test((c.innerText || c.textContent || '').trim()));
+            });
+            if (matches.length > 0) {
+                const target = matches[0];
+                const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || target;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                clickable.click();
+                return true;
+            }
+            return false;
+        }''')
+        if res:
+            time.sleep(1.5)
+            return True
+        time.sleep(1.0)
+
+    print("     [Warning] Menu 'Catatan' tidak terdeteksi langsung.")
+    return False
+
+def ensure_tampilkan_anomali_checked(page):
+    """Memastikan checkbox 'Tampilkan Anomali Usaha dan Keluarga' bernilai true (tercentang)."""
+    print("  -> Memeriksa checkbox 'Tampilkan Anomali Usaha dan Keluarga'...")
+    time.sleep(1.0)
+    for _ in range(3):
+        res = page.evaluate('''() => {
+            function triggerChange(el) {
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const all = Array.from(document.querySelectorAll('*'));
+            const targetEl = all.find(el => {
+                const t = (el.innerText || el.textContent || '').toLowerCase();
+                return t.includes('tampilkan anomali') && !Array.from(el.children).some(c => (c.innerText || '').toLowerCase().includes('tampilkan anomali'));
+            });
+
+            if (targetEl) {
+                let parent = targetEl.parentElement;
+                for (let i = 0; i < 5; i++) {
+                    if (!parent) break;
+                    const cb = parent.querySelector('input[type="checkbox"]');
+                    if (cb) {
+                        const was_checked = cb.checked;
+                        if (!was_checked) {
+                            cb.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            cb.click();
+                            cb.checked = true;
+                            triggerChange(cb);
+                            return { success: true, toggled: true, was_checked: false };
+                        }
+                        return { success: true, toggled: false, was_checked: true };
+                    }
+                    parent = parent.parentElement;
+                }
+
+                // Jika tidak ada input checkbox eksplisit, klik teks/label langsung
+                targetEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+                targetEl.click();
+                return { success: true, toggled: true, was_checked: false, note: "clicked_label" };
+            }
+            return { success: false };
+        }''')
+
+        if res and res.get("success"):
+            if res.get("was_checked"):
+                print("     [OK] Checkbox 'Tampilkan Anomali' sudah bernilai TRUE (tercentang).")
+            else:
+                print("     [OK] Berhasil mencentang checkbox 'Tampilkan Anomali Usaha dan Keluarga' (TRUE).")
+            time.sleep(1.0)
+            return True
+        time.sleep(1.0)
+
+    try:
+        page.locator("text=/Tampilkan Anomali/i").first.click(timeout=3000, force=True)
+        print("     [OK] Checkbox 'Tampilkan Anomali' dicentang via Playwright fallback.")
+        time.sleep(1.0)
+        return True
+    except Exception:
+        print("     [Info] Checkbox 'Tampilkan Anomali' tidak terdeteksi atau sudah aktif.")
+        return False
+
 def click_kirim_and_confirm(page):
     """
-    Mengklik tombol 'Kirim' dan menangani modal konfirmasi jika muncul,
-    serta tombol split dropdown 'Submit Paksa' jika diperlukan.
+    Mengklik tombol 'Kirim' / 'Submit' dan menyelesaikan konfirmasi modal bertingkat (konfirm 2x).
     """
     time.sleep(1.0)
 
-    # 1. Coba klik tombol Kirim
+    # 1. Coba klik tombol Kirim / Submit
     kirim_clicked = False
     try:
-        kirim_btn = page.get_by_role("button", name=re.compile(r"^Kirim$", re.IGNORECASE)).first
+        kirim_btn = page.get_by_role("button", name=re.compile(r"^Kirim$|^Submit$", re.IGNORECASE)).first
         if kirim_btn.is_visible():
             kirim_btn.scroll_into_view_if_needed(timeout=2000)
             kirim_btn.click(timeout=4000)
@@ -819,7 +923,7 @@ def click_kirim_and_confirm(page):
             });
             const target = btns.find(b => {
                 const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return t === 'kirim' || t === 'simpan' || t.includes('kirim');
+                return t === 'kirim' || t === 'submit' || t === 'simpan' || t.includes('kirim');
             });
             if (target) {
                 target.scrollIntoView({ behavior: 'instant', block: 'center' });
@@ -829,38 +933,60 @@ def click_kirim_and_confirm(page):
             return false;
         }''')
 
+    if kirim_clicked:
+        print("     [OK] Tombol 'Kirim' / 'Submit' diklik.")
     time.sleep(1.5)
 
-    # 2. Tangani dialog / modal konfirmasi jika muncul (Tombol Kirim / Ya / Konfirmasi)
-    modal_handled = False
-    try:
-        modal_handled = page.evaluate('''() => {
-            const btns = Array.from(document.querySelectorAll('button')).filter(b => {
-                const style = window.getComputedStyle(b);
-                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
-            });
-            const confirmBtn = btns.find(b => {
-                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return (
-                    t === 'ya' || 
-                    t === 'konfirmasi' || 
-                    t === 'submit' || 
-                    t === 'setuju' || 
-                    t === 'lanjutkan' || 
-                    t.includes('ya, submit') || 
-                    t.includes('ya, kirim') || 
-                    t.includes('ya, simpan')
-                );
-            });
-            if (confirmBtn) {
-                confirmBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                confirmBtn.click();
-                return true;
-            }
-            return false;
-        }''')
-    except Exception:
-        pass
+    # 2. Tangani dialog / modal konfirmasi bertingkat (konfirm 1 & konfirm 2)
+    print("  -> Menangani konfirmasi submit (konfirm 2x)...")
+    for step_konfirm in range(1, 4):
+        modal_handled = False
+        try:
+            modal_handled = page.evaluate('''() => {
+                const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
+                    const style = window.getComputedStyle(b);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+                });
+                const confirmBtn = btns.find(b => {
+                    const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                    return (
+                        t === 'ya' || 
+                        t === 'konfirmasi' || 
+                        t === 'submit' || 
+                        t === 'setuju' || 
+                        t === 'lanjutkan' || 
+                        t.includes('ya, submit') || 
+                        t.includes('ya, kirim') || 
+                        t.includes('ya, simpan') ||
+                        t.includes('ya, lanjutkan')
+                    );
+                });
+                if (confirmBtn) {
+                    confirmBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    confirmBtn.click();
+                    return { success: true, text: (confirmBtn.innerText || confirmBtn.textContent || '').trim() };
+                }
+                return { success: false };
+            }''')
+        except Exception:
+            pass
+
+        if modal_handled and modal_handled.get("success"):
+            print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik: '{modal_handled.get('text')}'")
+            time.sleep(2.0)
+        else:
+            # Fallback Playwright jika tombol ada di dialog
+            try:
+                conf_btns = page.locator("button").filter(has_text=re.compile(r"Kirim|Ya|Konfirmasi|Setuju|Lanjut|Submit", re.IGNORECASE)).all()
+                vis = [b for b in conf_btns if b.is_visible()]
+                if len(vis) > 0:
+                    vis[-1].click(timeout=2000)
+                    print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik via Playwright fallback.")
+                    time.sleep(2.0)
+                else:
+                    break
+            except Exception:
+                break
 
     # 3. Cek apakah ada split dropdown (titik tiga) / Submit Paksa jika form membutuhkan override
     try:
@@ -899,41 +1025,6 @@ def click_kirim_and_confirm(page):
         return False, "Toast 'Failed to fetch' muncul setelah kirim"
 
     return True, "Berhasil dikirim dan dikonfirmasi"
-
-def save_rincian_and_submit(page):
-    """
-    Menyimpan form setelah 8.d diubah:
-    1. Jika ada tombol 'Simpan' / 'Selesai' di modal atau bagian rincian, klik terlebih dahulu.
-    2. Kemudian klik tombol 'Kirim' utama dan selesaikan konfirmasi modal.
-    """
-    time.sleep(1.0)
-
-    # 1. Cek apakah ada tombol Simpan / Selesai / Terapkan di dalam modal dialog atau form rincian
-    try:
-        modal_saved = page.evaluate('''() => {
-            const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
-                const style = window.getComputedStyle(b);
-                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
-            });
-            const saveBtn = btns.find(b => {
-                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                return t === 'simpan' || t === 'selesai' || t === 'terapkan' || t === 'ok' || t === 'simpan rincian';
-            });
-            if (saveBtn) {
-                saveBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                saveBtn.click();
-                return true;
-            }
-            return false;
-        }''')
-        if modal_saved:
-            print("     [OK] Berhasil mengklik tombol 'Simpan' pada rincian.")
-            time.sleep(2.0)
-    except Exception:
-        pass
-
-    # 2. Klik tombol Kirim dan Konfirmasi utama
-    return click_kirim_and_confirm(page)
 
 def process_single_assignment(page, item):
     """
@@ -1022,9 +1113,37 @@ def process_single_assignment(page, item):
 
     time.sleep(0.5)
 
-    # 5. Simpan rincian dan Kirim form
-    print("  -> Menyimpan rincian dan mengirimkan form...")
-    kirim_ok, msg_kirim = save_rincian_and_submit(page)
+    # 5. Jika ada tombol Simpan di dalam modal rincian, klik untuk simpan rincian
+    try:
+        page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
+                const style = window.getComputedStyle(b);
+                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+            });
+            const saveBtn = btns.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return t === 'simpan' || t === 'selesai' || t === 'terapkan' || t === 'ok' || t === 'simpan rincian';
+            });
+            if (saveBtn) {
+                saveBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                saveBtn.click();
+                return true;
+            }
+            return false;
+        }''')
+        time.sleep(1.5)
+    except Exception:
+        pass
+
+    # 6. Masuk ke menu Catatan
+    open_menu_catatan(page)
+
+    # 7. Pastikan 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE
+    ensure_tampilkan_anomali_checked(page)
+
+    # 8. Submit dan konfirmasi bertingkat (konfirm 2x)
+    print("  -> Menyimpan dan mengirimkan form...")
+    kirim_ok, msg_kirim = click_kirim_and_confirm(page)
     if not kirim_ok:
         print(f"  -> [GAGAL] Pengiriman form gagal: {msg_kirim}")
         return "FAILED_SUBMIT", msg_kirim

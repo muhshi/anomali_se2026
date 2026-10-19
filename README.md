@@ -60,7 +60,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
     4. Melakukan scroll bertahap ke bawah pada form/modal rincian agar blok pertanyaan 8 termuat sepenuhnya di DOM.
     5. Mencari pertanyaan 8.d dan memilih opsi `10. Diluar kawasan` (mendukung radio button, native select, maupun custom combobox/dropdown).
     6. Membersihkan field *Nama kawasan* (8.e) jika masih terisi/aktif.
-    7. Menyimpan rincian dan mengklik tombol **Kirim** serta menyelesaikan konfirmasi modal.
+    7. Menyimpan rincian usaha.
+    8. Masuk ke menu **Catatan** dan memastikan checkbox **Tampilkan Anomali Usaha dan Keluarga** bernilai `true` (tercentang).
+    9. Mengklik tombol **Kirim** / **Submit** dan menyelesaikan konfirmasi modal bertingkat (konfirm 2x).
   - Dilengkapi fitur pemilihan filter wilayah Kecamatan interaktif (misal Bonang, Sayung, atau Semua).
   - Dilengkapi cache progres mandiri `processed_jenis_kawasan.json` agar pengerjaan yang terputus dapat dilanjutkan tanpa mengulang link yang sukses.
   - Dilengkapi pencatatan laporan rekap Excel `laporan_jenis_kawasan.xlsx` dan JSON `laporan_jenis_kawasan.json`.
