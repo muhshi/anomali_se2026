@@ -385,26 +385,25 @@ def click_lihat_rincian(page, nama_usaha=""):
     # 1. Coba klik langsung dengan Playwright locator berbasis card/container
     if clean_usaha:
         try:
-            card_btn = page.locator("div, tr, li").filter(has_text=re.compile(re.escape(clean_usaha), re.IGNORECASE)).locator("button, [role='button'], a").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
-            if card_btn.is_visible():
+            # Cari card yang memuat nama usaha lalu cari button 'Lihat Rincian'
+            card_btn = page.locator("div, tr, li").filter(has_text=re.compile(re.escape(clean_usaha), re.IGNORECASE)).locator("button").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
+            if card_btn.count() > 0:
                 card_btn.scroll_into_view_if_needed(timeout=2000)
-                card_btn.click(timeout=3000)
+                card_btn.click(timeout=3000, force=True)
                 print(f"     [OK] Tombol oranye 'Lihat Rincian' pada usaha '{clean_usaha}' berhasil diklik via Playwright card locator.")
-                time.sleep(2.0)
+                time.sleep(2.5)
                 return True
         except Exception:
             pass
 
     # 2. Coba klik langsung tombol dengan teks 'Lihat Rincian' di seluruh halaman
     try:
-        global_btn = page.locator("button, [role='button'], a").filter(has_text=re.compile(r"^Lihat\s*Rincian$", re.IGNORECASE)).first
-        if not global_btn.is_visible():
-            global_btn = page.locator("button, [role='button'], a").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
-        if global_btn.is_visible():
+        global_btn = page.locator("button").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
+        if global_btn.count() > 0:
             global_btn.scroll_into_view_if_needed(timeout=2000)
-            global_btn.click(timeout=3000)
-            print("     [OK] Tombol oranye 'Lihat Rincian' berhasil diklik via Playwright locator.")
-            time.sleep(2.0)
+            global_btn.click(timeout=3000, force=True)
+            print("     [OK] Tombol oranye 'Lihat Rincian' berhasil diklik via Playwright global button locator.")
+            time.sleep(2.5)
             return True
     except Exception:
         pass
@@ -1288,7 +1287,7 @@ def main():
         context = p.chromium.launch_persistent_context(
             user_data_dir=profile_dir,
             headless=False,
-            viewport={"width": 1366, "height": 768},
+            no_viewport=True,
             args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
         )
 
