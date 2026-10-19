@@ -10,13 +10,15 @@ chrome_profile_anomali/
 processed_links.json
 processed_status_ditemukan.json
 processed_edit_admin.json
+processed_jenis_kawasan.json
 laporan_status_ditemukan.json
 laporan_usaha_sudah_diganti.json
+laporan_jenis_kawasan.json
 
 # Data files
 data/*
-!data/.gitkeep
-!data/*/.gitkeep
+!data/**/
+!data/**/.gitkeep
 *.xlsx
 *.csv
 

@@ -28,22 +28,41 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 📦 Anomali-SE2026
  ┣ 📂 data                     <-- FOLDER UTAMA DATA EXCEL
  ┃ ┣ 📂 Anomali                <-- Taruh file Excel anomali di sini (cth: anomaly 28 sept.xlsx)
- ┃ ┗ 📂 BKU Ditautkan          <-- Taruh file Excel BKU di sini (cth: 12. BKU Ditautkan tapi Status Ganda.xlsx)
+ ┃ ┣ 📂 BKU Ditautkan          <-- Taruh file Excel BKU di sini (cth: 12. BKU Ditautkan tapi Status Ganda.xlsx)
+ ┃ ┗ 📂 Kawasan                <-- Taruh file Excel anomali kawasan di sini (cth: sqllab...xlsx)
  ┣ 📂 chrome_profile_anomali   <-- Folder cache cookies agar tidak perlu login terus
  ┣ 📂 venv                     <-- (Terbuat otomatis) Folder sistem Python internal
  ┣ 📜 run.bat                  <-- KLIK INI UNTUK MENJALANKAN MENU BOT
  ┣ 📜 run_edit_admin.bat       <-- Launcher khusus Bot Edit Anomali by Admin
  ┣ 📜 run_status_ditemukan.bat <-- Launcher khusus Bot Ubah Status Ditemukan
+ ┣ 📜 run_ubah_kawasan.bat     <-- Launcher khusus Bot Ubah Jenis Kawasan ke Diluar Kawasan
  ┣ 📜 edit_anomali_admin.py    <-- Script bot konfirmasi & perbaikan anomali by admin
  ┣ 📜 reject_anomali.py        <-- Script bot reject anomali
  ┣ 📜 ubah_status_ditemukan.py <-- Script bot ubah status '1. Ditemukan' & Submit Paksa
+ ┣ 📜 ubah_jenis_kawasan.py    <-- Script bot ubah '8. d. Jenis kawasan' ke '10. Diluar kawasan'
  ┣ 📜 processed_edit_admin.json <-- Log cache bot edit by admin
  ┣ 📜 processed_links.json     <-- Log cache bot reject
  ┣ 📜 processed_status_ditemukan.json <-- Log cache bot ubah status
+ ┣ 📜 processed_jenis_kawasan.json    <-- Log cache bot ubah kawasan
  ┗ 📜 README.md
 ```
 
 ## 📝 Changelog
+
+### 2026-10-19
+- **Fitur Bot Ubah Jenis Kawasan ke '10. Diluar kawasan' (`ubah_jenis_kawasan.py`)**:
+  - Menambahkan script otomasi baru `ubah_jenis_kawasan.py` untuk menangani anomali isian kawasan pada data SE2026 (seperti file `sqllab_untitled_query_17_20261019T113729.xlsx`).
+  - Mengotomatisasi perubahan rincian pertanyaan **8. d. Jenis kawasan beroperasi** dari kode **1. Kawasan Ekonomi Khusus (KEK)** menjadi kode **10. Diluar kawasan** (atau Di luar kawasan).
+  - Alur otomatisasi:
+    1. Membuka link assignment `/edit`.
+    2. Membuka tab menu **SE2026 - P**.
+    3. Mencari pertanyaan 8.d dan memilih opsi `10. Diluar kawasan` (mendukung radio button, native select, maupun custom combobox/dropdown).
+    4. Membersihkan field *Nama kawasan* (8.e) jika masih terisi/aktif.
+    5. Mengklik tombol **Kirim** dan menyelesaikan konfirmasi modal (serta menangani split button Submit Paksa bila diperlukan).
+  - Dilengkapi fitur pemilihan filter wilayah Kecamatan interaktif (misal Bonang, Sayung, atau Semua).
+  - Dilengkapi cache progres mandiri `processed_jenis_kawasan.json` agar pengerjaan yang terputus dapat dilanjutkan tanpa mengulang link yang sukses.
+  - Dilengkapi pencatatan laporan rekap Excel `laporan_jenis_kawasan.xlsx` dan JSON `laporan_jenis_kawasan.json`.
+  - Menambahkan launcher khusus **`run_ubah_kawasan.bat`** serta mengintegrasikan opsi `[4] Bot Ubah Jenis Kawasan ke Diluar Kawasan` pada menu utama **`run.bat`**.
 
 ### 2026-09-28
 - **Pemisahan Folder Data Otomatis (`data/Anomali` & `data/BKU Ditautkan`)**:

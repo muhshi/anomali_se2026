@@ -987,7 +987,19 @@ def process_single_assignment(page, item):
         print("  -> [SKIP] Tombol titik tiga / menu 'Submit Paksa' tidak tersedia.")
         return "SKIP_NO_SUBMIT_PAKSA", "Tombol titik tiga / menu 'Submit Paksa' tidak tersedia"
 
+    def has_failed_to_fetch_toast():
+        try:
+            return page.evaluate('''() => {
+                const t = ((document.body.innerText || '') + ' ' + (document.body.textContent || '')).toLowerCase();
+                return t.includes('failed to fetch');
+            }''')
+        except Exception:
+            return False
+
     time.sleep(1.5)
+    if has_failed_to_fetch_toast():
+        print("  -> [GAGAL] Toast 'Failed to fetch' muncul setelah Submit Paksa.")
+        return "FAILED_TO_FETCH", "Toast 'Failed to fetch' muncul setelah Submit Paksa"
 
     # 6. Cek dan tangani dialog konfirmasi lanjutan jika ada
     # (Misal: 'Apakah Anda yakin ingin submit paksa?', tombol 'Ya' / 'Konfirmasi' / 'Submit')
@@ -1015,7 +1027,13 @@ def process_single_assignment(page, item):
     except Exception:
         pass
 
-    time.sleep(2.5) # Tunggu pengiriman selesai ke server Fasih
+    # Tunggu pengiriman selesai ke server Fasih sambil memantau toast error
+    deadline = time.time() + 4.0
+    while time.time() < deadline:
+        time.sleep(0.4)
+        if has_failed_to_fetch_toast():
+            print("  -> [GAGAL] Toast 'Failed to fetch' muncul setelah konfirmasi.")
+            return "FAILED_TO_FETCH", "Toast 'Failed to fetch' muncul setelah konfirmasi Submit Paksa"
     return "SUCCESS", "Status diubah ke Ditemukan & Submit Paksa sukses"
 
 def main():
@@ -1192,6 +1210,19 @@ def main():
                 reports_data.append(item_data)
             save_report(reports_data)
 
+        def remove_from_report(link):
+            # Berhasil tidak dicatat; hapus catatan gagal/skip sebelumnya jika ada
+            if link in report_link_map:
+                reports_data.pop(report_link_map[link])
+                report_link_map.clear()
+                report_link_map.update({r.get("link"): i for i, r in enumerate(reports_data)})
+                save_report(reports_data)
+                if not reports_data and os.path.exists(REPORT_EXCEL):
+                    try:
+                        os.remove(REPORT_EXCEL)
+                    except Exception:
+                        pass
+
         diganti_reports_data = load_diganti_reports()
         diganti_link_map = {r.get("link"): idx for idx, r in enumerate(diganti_reports_data)}
 
@@ -1232,16 +1263,22 @@ def main():
                     processed_cache.add(link)
                     save_cache(processed_cache)
                     success_count += 1
+                    remove_from_report(link)
+                    print(f"  -> [BERHASIL] Status diubah ke Ditemukan & Submit Paksa sukses!")
+
+                elif status == "FAILED_TO_FETCH":
+                    # Tidak masuk cache agar bisa diulang pada run berikutnya
+                    fail_count += 1
                     append_or_update_report({
                         "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "kab": kab,
                         "nama": nama,
                         "link": link,
-                        "status": "BERHASIL",
-                        "keterangan": "Status diubah ke Ditemukan & Submit Paksa sukses",
+                        "status": "GAGAL - FAILED TO FETCH",
+                        "keterangan": "Submit paksa sudah diklik/konfirmasi, tetapi web menampilkan toast 'Failed to fetch'",
                         "detail_pesan": msg
                     })
-                    print(f"  -> [BERHASIL] Status diubah ke Ditemukan & Submit Paksa sukses!")
+                    print(f"  -> [GAGAL] Failed to fetch dicatat ke laporan (akan dicoba ulang di run berikutnya).")
                 
                 elif status == "SKIP_USAHA_SUDAH_DIGANTI":
                     processed_cache.add(link)

@@ -10,6 +10,7 @@ echo.
 if not exist "data" mkdir "data"
 if not exist "data\Anomali" mkdir "data\Anomali"
 if not exist "data\BKU Ditautkan" mkdir "data\BKU Ditautkan"
+if not exist "data\Kawasan" mkdir "data\Kawasan"
 
 :: 2. Pindahkan file .xlsx dari folder utama ke folder data/subfolder jika ada
 for %%f in (*anomali*.xlsx) do (
@@ -20,8 +21,12 @@ for %%f in (*bku*.xlsx) do (
     echo [Info] Memindahkan file BKU: %%f ke data\BKU Ditautkan\
     move /y "%%f" "data\BKU Ditautkan\" >nul
 )
+for %%f in (*kawasan*.xlsx) do (
+    echo [Info] Memindahkan file Kawasan: %%f ke data\Kawasan\
+    move /y "%%f" "data\Kawasan\" >nul
+)
 for %%f in (*.xlsx) do (
-    if not "%%f"=="laporan_status_ditemukan.xlsx" if not "%%f"=="laporan_usaha_sudah_diganti.xlsx" (
+    if not "%%f"=="laporan_status_ditemukan.xlsx" if not "%%f"=="laporan_usaha_sudah_diganti.xlsx" if not "%%f"=="laporan_jenis_kawasan.xlsx" (
         echo [Info] Menemukan file Excel: %%f
         move /y "%%f" "data\" >nul
     )
@@ -142,9 +147,10 @@ echo ====================================================
 echo [1] Bot Reject Anomali (reject_anomali.py)
 echo [2] Bot Edit Anomali by Admin (edit_anomali_admin.py) [DEFAULT]
 echo [3] Bot Ubah Status Ditemukan ^& Submit Paksa (ubah_status_ditemukan.py)
+echo [4] Bot Ubah Jenis Kawasan ke Diluar Kawasan (ubah_jenis_kawasan.py)
 echo ====================================================
 set "BOT_CHOICE=2"
-set /p BOT_CHOICE="Pilih nomor [1/2/3] (Default: 2): "
+set /p BOT_CHOICE="Pilih nomor [1/2/3/4] (Default: 2): "
 
 if "%BOT_CHOICE%"=="1" (
     echo.
@@ -154,6 +160,10 @@ if "%BOT_CHOICE%"=="1" (
     echo.
     echo Menjalankan Bot Ubah Status Ditemukan ^& Submit Paksa...
     python ubah_status_ditemukan.py
+) else if "%BOT_CHOICE%"=="4" (
+    echo.
+    echo Menjalankan Bot Ubah Jenis Kawasan ke Diluar Kawasan...
+    python ubah_jenis_kawasan.py
 ) else (
     echo.
     echo Menjalankan Bot Edit Anomali by Admin...
