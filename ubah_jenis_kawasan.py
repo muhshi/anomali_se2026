@@ -287,14 +287,156 @@ def resolve_bot_detection(page, target_link):
 # LOGIKA INTI PERUBAHAN FORM FASIH-SM
 # ==============================================================================
 
+def open_menu_blok_ii(page):
+    """
+    Membuka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN).
+    Pencarian:
+    - 'SE2026 - L BLOK II'
+    - 'BLOK II'
+    - 'KETERANGAN USAHA/PERUSAHAAN' atau 'KETERANGAN USAHA'
+    Jika 'SE2026 - L' adalah menu accordion yang tertutup, akan diklik terlebih dahulu untuk mengekspansi.
+    """
+    for attempt in range(2):
+        res = page.evaluate('''() => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
+            const all = Array.from(document.querySelectorAll('*'));
+            
+            // Ambil semua sidebar menu items
+            const sidebars = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul'));
+            let allMenuTexts = [];
+            sidebars.forEach(s => {
+                const children = Array.from(s.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[class*="item"]'));
+                children.forEach(c => {
+                    const t = getCleanText(c);
+                    if (t && t.length < 70 && !allMenuTexts.includes(t)) allMenuTexts.push(t);
+                });
+            });
+
+            // 1. Cari leaf dengan kecocokan spesifik 'SE2026 - L' + 'BLOK II' atau 'BLOK II'
+            const regFull = /(?:SE2026\s*[-–—]?\s*L.*BLOK\s*II|BLOK\s*II.*KETERANGAN\s*USAHA)/i;
+            const regBlokII = /BLOK\s*II\b/i;
+            const regKetUsaha = /KETERANGAN\s*USAHA/i;
+
+            let matchedLeafs = all.filter(el => {
+                const t = getCleanText(el);
+                return (regFull.test(t) || regBlokII.test(t) || (regKetUsaha.test(t) && !t.toLowerCase().includes('anomali'))) &&
+                       !Array.from(el.children).some(c => regFull.test(getCleanText(c)) || regBlokII.test(getCleanText(c)));
+            });
+
+            // Jika belum ada, coba ekspansi 'SE2026 - L' jika berupa accordion yang tertutup
+            if (matchedLeafs.length === 0) {
+                const lLeafs = all.filter(el => {
+                    const t = getCleanText(el);
+                    return /SE2026\s*[-–—]?\s*L/i.test(t) &&
+                           !Array.from(el.children).some(c => /SE2026\s*[-–—]?\s*L/i.test(getCleanText(c)));
+                });
+                if (lLeafs.length > 0) {
+                    const lTarget = lLeafs[0].closest('a, button, [role="tab"], [role="treeitem"], li') || lLeafs[0];
+                    lTarget.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    lTarget.click();
+                    return { success: false, need_wait: true, action: 'expanded_se2026_l', allMenus: allMenuTexts.slice(0, 20) };
+                }
+            }
+
+            if (matchedLeafs.length > 0) {
+                matchedLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
+                const target = matchedLeafs[0];
+                const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || target;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                clickable.click();
+                return {
+                    success: true,
+                    menu: getCleanText(clickable),
+                    allMenus: allMenuTexts.slice(0, 20)
+                };
+            }
+
+            return { success: false, allMenus: allMenuTexts.slice(0, 20) };
+        }''')
+
+        if res and res.get("success"):
+            print(f"     [OK] Berhasil membuka menu: '{res.get('menu')}'")
+            time.sleep(1.5)
+            return True
+        elif res and res.get("need_wait"):
+            print("     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu...")
+            time.sleep(1.5)
+            continue
+        else:
+            all_m = res.get("allMenus", []) if res else []
+            print(f"     [Info] Daftar menu sidebar terdeteksi: {all_m}")
+            time.sleep(1.0)
+
+    return False
+
+def click_lihat_rincian(page, nama_usaha=""):
+    """
+    Mengklik tombol 'Lihat Rincian' pada menu SE2026 - L BLOK II.
+    Mendukung:
+    - Tombol 'Lihat Rincian' pada baris tabel/kartu sesuai nama usaha
+    - Tombol 'Lihat Rincian' langsung pada halaman
+    """
+    time.sleep(1.0)
+    for attempt in range(3):
+        res = page.evaluate('''(namaUsaha) => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
+
+            const all = Array.from(document.querySelectorAll('*'));
+
+            // 1. Cek baris tabel atau card yang memuat nama usaha
+            if (namaUsaha) {
+                const uClean = namaUsaha.toLowerCase().trim();
+                const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"], div[class*="shadow"]'));
+                for (const c of containers) {
+                    const cText = getCleanText(c).toLowerCase();
+                    if (cText.includes(uClean)) {
+                        const btn = Array.from(c.querySelectorAll('button, a, [role="button"], span, div')).find(el => {
+                            const t = getCleanText(el).toLowerCase();
+                            return t === 'lihat rincian' || t.includes('lihat rincian') || t === 'rincian';
+                        });
+                        if (btn) {
+                            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            btn.click();
+                            return { success: true, method: 'row_nama_usaha', text: getCleanText(btn) };
+                        }
+                    }
+                }
+            }
+
+            // 2. Cari semua elemen dengan teks persis atau mengandung 'Lihat Rincian'
+            const rincianLeafs = all.filter(el => {
+                const t = getCleanText(el).toLowerCase();
+                return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'rincian') &&
+                       !Array.from(el.children).some(c => (getCleanText(c).toLowerCase().includes('lihat rincian') || getCleanText(c).toLowerCase() === 'rincian'));
+            });
+
+            if (rincianLeafs.length > 0) {
+                rincianLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
+                const target = rincianLeafs.find(el => el.offsetParent !== null) || rincianLeafs[0];
+                const clickable = target.closest('button, a, [role="button"], tr, div') || target;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                clickable.click();
+                return { success: true, method: 'direct_rincian_btn', text: getCleanText(clickable) };
+            }
+
+            return { success: false };
+        }''', nama_usaha)
+
+        if res and res.get("success"):
+            print(f"     [OK] Berhasil mengklik tombol '{res.get('text')}' ({res.get('method')})")
+            time.sleep(2.0)
+            return True
+        time.sleep(1.0)
+
+    print("     [Warning] Tombol 'Lihat Rincian' tidak terdeteksi langsung, melanjutkan pencarian pertanyaan...")
+    return False
+
 def open_menu_usaha_bawah_p(page, item):
-    """
-    Membuka menu di bawah 'SE2026 - P' (menu rincian usaha/perusahaan).
-    Prioritas:
-    1. Mencari menu yang memuat nama usaha (misal: 'TOKO IBU KARTINI').
-    2. Mencari elemen menu/tab yang berada tepat di bawah 'SE2026 - P' pada sidebar.
-    3. Mencari menu berawalan '1.' atau 'SE2026 - U' atau 'Usaha'.
-    """
+    """Fallback membuka menu di bawah 'SE2026 - P' jika BLOK II tidak ditemukan terpisah."""
     nama_usaha = item.get("nama_usaha", "").strip()
 
     # Dapatkan daftar semua menu di sidebar untuk diagnostik dan pencarian
@@ -758,15 +900,51 @@ def click_kirim_and_confirm(page):
 
     return True, "Berhasil dikirim dan dikonfirmasi"
 
+def save_rincian_and_submit(page):
+    """
+    Menyimpan form setelah 8.d diubah:
+    1. Jika ada tombol 'Simpan' / 'Selesai' di modal atau bagian rincian, klik terlebih dahulu.
+    2. Kemudian klik tombol 'Kirim' utama dan selesaikan konfirmasi modal.
+    """
+    time.sleep(1.0)
+
+    # 1. Cek apakah ada tombol Simpan / Selesai / Terapkan di dalam modal dialog atau form rincian
+    try:
+        modal_saved = page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
+                const style = window.getComputedStyle(b);
+                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+            });
+            const saveBtn = btns.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return t === 'simpan' || t === 'selesai' || t === 'terapkan' || t === 'ok' || t === 'simpan rincian';
+            });
+            if (saveBtn) {
+                saveBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                saveBtn.click();
+                return true;
+            }
+            return false;
+        }''')
+        if modal_saved:
+            print("     [OK] Berhasil mengklik tombol 'Simpan' pada rincian.")
+            time.sleep(2.0)
+    except Exception:
+        pass
+
+    # 2. Klik tombol Kirim dan Konfirmasi utama
+    return click_kirim_and_confirm(page)
+
 def process_single_assignment(page, item):
     """
     Memproses satu assignment:
     1. Buka link /edit
-    2. Buka menu usaha di bawah 'SE2026 - P'
-    3. Scroll form ke bawah agar pertanyaan 8.d termuat
-    4. Ubah 8. d. Jenis kawasan beroperasi ke '10. Diluar kawasan'
-    5. Bersihkan nama kawasan (8.e) jika masih terisi
-    6. Simpan / Kirim form dan selesaikan konfirmasi
+    2. Buka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN)
+    3. Klik tombol 'Lihat Rincian'
+    4. Scroll form ke bawah agar pertanyaan 8.d termuat
+    5. Ubah 8. d. Jenis kawasan beroperasi ke '10. Diluar kawasan'
+    6. Bersihkan nama kawasan (8.e) jika masih terisi
+    7. Simpan rincian dan kirim form
     """
     link = item["link"]
     nama_usaha = item.get("nama_usaha", "")
@@ -790,21 +968,26 @@ def process_single_assignment(page, item):
 
     time.sleep(1.0)
 
-    # 1. Buka menu di bawah 'SE2026 - P' (Menu Usaha)
-    print(f"  -> Membuka menu usaha di bawah 'SE2026 - P' (Target: '{nama_usaha}')...")
-    menu_ok = open_menu_usaha_bawah_p(page, item)
+    # 1. Buka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN)
+    print(f"  -> Membuka menu 'SE2026 - L BLOK II: KETERANGAN USAHA/PERUSAHAAN'...")
+    menu_ok = open_menu_blok_ii(page)
     if not menu_ok:
-        print("  -> [Warning] Menu bawah belum terkonfirmasi terbuka. Mencoba sekali lagi setelah jeda...")
-        time.sleep(1.5)
-        menu_ok = open_menu_usaha_bawah_p(page, item)
+        print("  -> [Warning] Menu BLOK II belum terkonfirmasi terbuka. Mencoba fallback pencarian menu...")
+        open_menu_usaha_bawah_p(page, item)
 
-    time.sleep(1.0)
+    time.sleep(1.5)
 
-    # 2. Scroll ke bawah agar pertanyaan 8.d termuat di DOM
-    print("  -> Melakukan scroll ke bawah pada form...")
+    # 2. Klik tombol 'Lihat Rincian'
+    print(f"  -> Mencari dan mengklik tombol 'Lihat Rincian' (Usaha: '{nama_usaha}')...")
+    click_lihat_rincian(page, nama_usaha)
+
+    time.sleep(1.5)
+
+    # 3. Scroll ke bawah pada form / modal rincian
+    print("  -> Melakukan scroll ke bawah pada form rincian...")
     scroll_form_down(page)
 
-    # 3. Ubah pertanyaan 8.d Jenis Kawasan ke '10. Diluar kawasan'
+    # 4. Ubah pertanyaan 8.d Jenis Kawasan ke '10. Diluar kawasan'
     print("  -> Mencari pertanyaan '8. d. Jenis kawasan beroperasi' dan memilih '10. Diluar kawasan'...")
     res_change = change_jenis_kawasan_to_10(page)
 
@@ -839,20 +1022,9 @@ def process_single_assignment(page, item):
 
     time.sleep(0.5)
 
-    # 4. Scroll ke bagian tombol Kirim di bawah
-    page.evaluate('''() => {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-        const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
-            const style = window.getComputedStyle(el);
-            return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
-        });
-        scrollables.forEach(s => { s.scrollTop = s.scrollHeight; });
-    }''')
-    time.sleep(0.5)
-
-    # 5. Klik Kirim dan Konfirmasi
-    print("  -> Menyimpan dan mengirimkan form...")
-    kirim_ok, msg_kirim = click_kirim_and_confirm(page)
+    # 5. Simpan rincian dan Kirim form
+    print("  -> Menyimpan rincian dan mengirimkan form...")
+    kirim_ok, msg_kirim = save_rincian_and_submit(page)
     if not kirim_ok:
         print(f"  -> [GAGAL] Pengiriman form gagal: {msg_kirim}")
         return "FAILED_SUBMIT", msg_kirim
