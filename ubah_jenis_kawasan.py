@@ -423,6 +423,24 @@ def click_lihat_rincian(page, nama_usaha=""):
                 return { success: true, method: 'direct_rincian_btn', text: getCleanText(clickable) };
             }
 
+            // 3. Fallback: Cari nama usaha di sub-menu sidebar (di bawah SE2026 - L BLOK II)
+            if (namaUsaha) {
+                const uClean = namaUsaha.toLowerCase().trim();
+                const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'));
+                for (const sb of sidebarEls) {
+                    const items = Array.from(sb.querySelectorAll('*')).filter(el => {
+                        const t = getCleanText(el).toLowerCase();
+                        return (t === uClean || t.includes(uClean)) && !Array.from(el.children).some(c => getCleanText(c).toLowerCase().includes(uClean));
+                    });
+                    if (items.length > 0) {
+                        const clickEl = items[0].closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li') || items[0];
+                        clickEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+                        clickEl.click();
+                        return { success: true, method: 'sidebar_submenu_nama_usaha', text: getCleanText(clickEl) };
+                    }
+                }
+            }
+
             return { success: false };
         }''', nama_usaha)
 
