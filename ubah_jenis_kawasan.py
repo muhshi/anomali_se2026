@@ -214,73 +214,119 @@ def load_data_from_excel(file_path):
 # ANTI-BOT / WAF / SSO HANDLERS
 # ==============================================================================
 
-def check_is_bot_or_blocked(page):
-    """Mengecek apakah halaman saat ini menunjukkan pesan bot, WAF, atau error SSO."""
+def check_connection_or_session_lost(page):
+    """
+    Mendeteksi apakah koneksi internet/VPN putus atau sesi Fasih-SM telah habis/keluar/terdeteksi bot.
+    """
     try:
-        if page.locator("text=/mendeteksi koneksi anda sebagai bot/i").count() > 0:
-            return True
-        if page.locator("text=/HaloSIS/i").count() > 0:
-            return True
-        if page.locator("text=/Lanjutkan dengan SSO/i").count() > 0:
-            return True
-        if page.locator("text=/Access Denied/i").count() > 0:
-            return True
-        url = page.url.lower()
-        if "sso" in url and ("error" in url or "login" in url or "block" in url):
-            return True
-    except Exception:
-        pass
-    return False
+        url = (page.url or "").lower()
 
-def resolve_bot_detection(page, target_link):
-    """Prosedur pemulihan otomatis jika terdeteksi bot atau rate-limit."""
-    if not check_is_bot_or_blocked(page):
-        return True
+        # 1. URL redirect ke login / SSO
+        if ("sso" in url and ("login" in url or "auth" in url or "error" in url)) or ("/login" in url) or ("/auth" in url):
+            if "/app/assignment/" not in url:
+                return True, "Sesi login keluar / dialihkan ke halaman SSO BPS"
 
-    print("=" * 60)
-    print(" [WAF / BOT DETECTED] Halaman terdeteksi bot atau terganggu sesi SSO.")
-    print(" Memulai prosedur pemulihan otomatis...")
-    
-    max_retries = 2
-    for attempt in range(1, max_retries + 1):
-        print(f" -> [Percobaan {attempt}/{max_retries}] Menunggu 10 detik agar rate-limit ter-reset...")
-        time.sleep(10)
-        
-        print(" -> Refresh/reload halaman...")
+        # 2. Halaman error jaringan Chromium / Windows Diagnostics / Blank DOM
+        res_check = page.evaluate('''() => {
+            if (!document || !document.body) {
+                return { isError: true, reason: 'document.body null (koneksi terputus)' };
+            }
+            const title = (document.title || '').toLowerCase();
+            const text = (document.body.innerText || '').toLowerCase();
+            const full = title + ' ' + text;
+
+            const errorKeywords = [
+                'checking the connection',
+                'running windows network diagnostics',
+                'err_internet_disconnected',
+                'err_connection_closed',
+                'err_connection_refused',
+                'err_connection_timed_out',
+                'err_name_not_resolved',
+                'no internet',
+                'tidak ada koneksi',
+                'access denied',
+                'session expired',
+                'sesi anda telah berakhir',
+                'mendeteksi koneksi anda sebagai bot',
+                'halosis'
+            ];
+
+            for (const kw of errorKeywords) {
+                if (full.includes(kw)) {
+                    return { isError: true, reason: 'Terdeteksi gangguan: ' + kw };
+                }
+            }
+
+            // Jika halaman tidak memiliki elemen sama sekali setelah loading
+            if (text.trim().length === 0 && document.body.children.length === 0) {
+                return { isError: true, reason: 'Halaman kosong melompong (tidak termuat)' };
+            }
+
+            return { isError: false };
+        }''')
+
+        if res_check and res_check.get("isError"):
+            return True, res_check.get("reason", "Halaman error atau sesi terputus")
+
+    except Exception as e:
+        err_msg = str(e)
+        if "Target closed" in err_msg or "Cannot read properties of null" in err_msg or "net::" in err_msg:
+            return True, f"Koneksi browser terganggu: {err_msg}"
+
+    return False, ""
+
+def pause_for_relogin(page, target_link=""):
+    """
+    Menghentikan sementara otomatisasi jika terdeteksi VPN putus atau sesi login habis.
+    Menunggu pengguna memeriksa VPN dan login ulang, lalu melanjutkan kembali.
+    """
+    print("\n" + "=" * 65)
+    print(" [PERINGATAN] TERDETEKSI GANGGUAN VPN / SESI FASIH-SM KELUAR!")
+    print(" Link ini TIDAK dimasukkan ke dalam cache (data aman, tidak dianggap selesai).")
+    print(" Langkah pemulihan:")
+    print("  1. Pastikan koneksi internet & VPN BPS Anda sudah aktif/tersambung kembali.")
+    print("  2. Buka jendela browser Chromium dan lakukan LOGIN ULANG ke Fasih-SM.")
+    print("  3. Pastikan sudah berhasil masuk kembali ke dashboard Fasih-SM.")
+    print("=" * 65)
+    input(" Tekan tombol ENTER di terminal ini jika Anda sudah login ulang untuk melanjutkan...")
+    print(" Melanjutkan kembali otomatisasi...")
+    time.sleep(2.0)
+    if target_link:
         try:
-            page.reload(wait_until="networkidle", timeout=15000)
-        except Exception:
-            try:
-                page.goto(target_link, wait_until="networkidle", timeout=15000)
-            except Exception:
-                pass
-        time.sleep(4)
-        
-        try:
-            sso_btn = page.locator("button, a, div").filter(
-                has_text=re.compile(r"Lanjutkan dengan SSO|Lanjutkan SSO|Login.*SSO|Masuk.*SSO|Lanjutkan", re.IGNORECASE)
-            )
-            if sso_btn.count() > 0 and sso_btn.first.is_visible():
-                print(" -> Mengklik tombol 'Lanjutkan dengan SSO'...")
-                sso_btn.first.click()
-                time.sleep(5)
-                try:
-                    page.wait_for_load_state("networkidle", timeout=10000)
-                except Exception:
-                    pass
+            page.goto(target_link, wait_until="networkidle", timeout=30000)
+            time.sleep(2.0)
         except Exception:
             pass
 
-        if not check_is_bot_or_blocked(page):
-            print(" -> [BERHASIL] Halaman terbebas dari deteksi bot! Melanjutkan...")
-            print("=" * 60)
-            return True
+def check_is_bot_or_blocked(page):
+    """Mengecek apakah halaman saat ini menunjukkan pesan bot, WAF, atau error SSO."""
+    is_lost, _ = check_connection_or_session_lost(page)
+    return is_lost
+
+def resolve_bot_detection(page, target_link):
+    """Prosedur pemulihan otomatis jika terdeteksi bot atau rate-limit."""
+    is_lost, reason = check_connection_or_session_lost(page)
+    if not is_lost:
+        return True
 
     print("=" * 60)
-    print(" MASIH TERDETEKSI BOT / HALOSIS!")
-    print(" Silakan verifikasi di browser secara manual jika perlu.")
-    print("=" * 60)
-    time.sleep(5)
+    print(f" [WAF / SESI TERGANGGU] {reason}")
+    print(" Memeriksa tombol 'Lanjutkan dengan SSO'...")
+    try:
+        sso_btn = page.locator("button, a, div").filter(
+            has_text=re.compile(r"Lanjutkan dengan SSO|Lanjutkan SSO|Login.*SSO|Masuk.*SSO|Lanjutkan", re.IGNORECASE)
+        )
+        if sso_btn.count() > 0 and sso_btn.first.is_visible():
+            sso_btn.first.click()
+            time.sleep(4)
+    except Exception:
+        pass
+
+    is_lost, reason = check_connection_or_session_lost(page)
+    if is_lost:
+        pause_for_relogin(page, target_link)
+
     return True
 
 # ==============================================================================
@@ -624,34 +670,38 @@ def scroll_form_down(page):
     Scroll ke bawah pada form / halaman Fasih-SM agar pertanyaan 8.d termuat dan tampil.
     Melakukan scroll bertahap pada window maupun elemen container scrollable.
     """
-    for step in range(1, 5):
-        page.evaluate('''(stepNum) => {
-            // Scroll window bertahap
-            window.scrollBy(0, 1000 * stepNum);
-            
-            // Scroll semua elemen container scrollable (div overflow, form, main)
+    try:
+        for step in range(1, 5):
+            page.evaluate('''(stepNum) => {
+                if (window) {
+                    window.scrollBy(0, 1000 * stepNum);
+                }
+                const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+                    const style = window.getComputedStyle(el);
+                    return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+                });
+                scrollables.forEach(s => {
+                    s.scrollTop = s.scrollHeight * (stepNum / 4);
+                });
+            }''', step)
+            time.sleep(0.4)
+
+        # Scroll penuh ke bawah sekali lagi (null-safe)
+        page.evaluate('''() => {
+            if (document && document.body) {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+            }
             const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
                 const style = window.getComputedStyle(el);
                 return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
             });
             scrollables.forEach(s => {
-                s.scrollTop = s.scrollHeight * (stepNum / 4);
+                s.scrollTop = s.scrollHeight;
             });
-        }''', step)
-        time.sleep(0.4)
-
-    # Scroll penuh ke bawah sekali lagi
-    page.evaluate('''() => {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-        const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
-            const style = window.getComputedStyle(el);
-            return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
-        });
-        scrollables.forEach(s => {
-            s.scrollTop = s.scrollHeight;
-        });
-    }''')
-    time.sleep(0.6)
+        }''')
+        time.sleep(0.6)
+    except Exception:
+        pass
 
 def change_jenis_kawasan_to_10(page):
     """
@@ -1325,15 +1375,25 @@ def process_single_assignment(page, item):
     except Exception as e:
         if "interrupted by another navigation" in str(e):
             time.sleep(2)
-            page.goto(link, wait_until="networkidle", timeout=30000)
+            try:
+                page.goto(link, wait_until="networkidle", timeout=30000)
+            except Exception as e2:
+                return "SESSION_LOST", f"Gagal memuat halaman: {e2}"
         else:
-            raise e
+            return "SESSION_LOST", f"Gagal memuat halaman: {e}"
+
+    # Cek apakah sesi login habis atau koneksi terputus saat membuka link
+    is_lost, reason = check_connection_or_session_lost(page)
+    if is_lost:
+        return "SESSION_LOST", reason
 
     resolve_bot_detection(page, link)
 
     # Verifikasi berada di halaman /edit
-    current_url = page.url
+    current_url = (page.url or "").lower()
     if "/edit" not in current_url:
+        if "login" in current_url or "sso" in current_url or "auth" in current_url:
+            return "SESSION_LOST", f"Sesi habis, dialihkan ke login: {current_url}"
         print(f"  -> [SKIP] Dialihkan ke {current_url}. Bukan wilayah tugas Anda / form terkunci.")
         return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
 
@@ -1344,7 +1404,11 @@ def process_single_assignment(page, item):
     menu_ok = open_menu_blok_ii(page)
     if not menu_ok:
         print("  -> [Warning] Menu BLOK II belum terkonfirmasi terbuka. Mencoba fallback pencarian menu...")
-        open_menu_usaha_bawah_p(page, item)
+        fallback_ok = open_menu_usaha_bawah_p(page, item)
+        if not fallback_ok:
+            is_lost, reason = check_connection_or_session_lost(page)
+            if is_lost:
+                return "SESSION_LOST", reason
 
     time.sleep(1.5)
 
@@ -1369,6 +1433,11 @@ def process_single_assignment(page, item):
         res_change = change_jenis_kawasan_to_10(page)
 
     if not res_change or not res_change.get("success"):
+        # Cek apakah kegagalan ini disebabkan karena koneksi putus / blank
+        is_lost, reason = check_connection_or_session_lost(page)
+        if is_lost:
+            return "SESSION_LOST", reason
+
         diag = page.evaluate('''() => {
             const sidebars = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'))
                 .flatMap(s => Array.from(s.querySelectorAll('a, button, [role="tab"], li')))
@@ -1380,6 +1449,10 @@ def process_single_assignment(page, item):
                 .slice(0, 15);
             return { currentUrl: window.location.href, sidebars: Array.from(new Set(sidebars)).slice(0, 10), titles: titles };
         }''')
+
+        if len(diag.get('sidebars', [])) == 0 and len(diag.get('titles', [])) == 0:
+            return "SESSION_LOST", "Halaman kosong melompong (koneksi/VPN terputus)"
+
         print(f"  -> [GAGAL] Opsi '10. Diluar kawasan' tidak ditemukan pada form.")
         print(f"     Diagnostik: Menu Sidebar={diag.get('sidebars')}, Teks Form={diag.get('titles')}")
         return "FAILED_LOCATING_OPTION", "Tidak dapat menemukan opsi '10. Diluar kawasan'"
@@ -1542,15 +1615,33 @@ def main():
                 print(f"[{idx}/{total_target}] [{kec}] SKIP (Sudah diproses): {nama}")
                 continue
 
-            print(f"\n[{idx}/{total_target}] [{kec}] Memproses: {nama}")
-            print(f"  Link: {link}")
+            while True:
+                print(f"\n[{idx}/{total_target}] [{kec}] Memproses: {nama}")
+                print(f"  Link: {link}")
 
-            status = None
-            msg = ""
-            try:
-                res_status, res_msg = process_single_assignment(page, item)
-                status = res_status
-                msg = res_msg
+                status = None
+                msg = ""
+                try:
+                    res_status, res_msg = process_single_assignment(page, item)
+                    status = res_status
+                    msg = res_msg
+                except Exception as e:
+                    err_str = str(e)
+                    if "null" in err_str or "Target closed" in err_str or "timeout" in err_str.lower() or "net::" in err_str or "Execution context" in err_str:
+                        status = "SESSION_LOST"
+                        msg = f"Koneksi terputus/error browser: {err_str}"
+                    else:
+                        print(f"  -> [ERROR] Terjadi exception: {e}")
+                        status = "FAILED_EXCEPTION"
+                        msg = str(e)
+
+                # JIKA TERDETEKSI SESI HABIS / VPN PUTUS:
+                # JANGAN catat ke laporan gagal, JANGAN masukkan cache, HENTIKAN SEMENTARA & TUNGGU LOGIN ULANG!
+                if status == "SESSION_LOST":
+                    print(f"  -> [SESI/VPN TERPUTUS] {msg}")
+                    pause_for_relogin(page, link)
+                    # Ulangi memproses link ini dari awal
+                    continue
 
                 if status == "SUCCESS":
                     processed_cache.add(link)
@@ -1564,7 +1655,7 @@ def main():
                         report_map = {r.get("link"): i for i, r in enumerate(report_data)}
                         save_report_data(report_data)
 
-                elif status == "FAILED_SUBMIT" or status == "FAILED_LOCATING_OPTION":
+                elif status in ["FAILED_SUBMIT", "FAILED_LOCATING_OPTION", "FAILED_EXCEPTION"]:
                     fail_count += 1
                     rec = {
                         "waktu": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1614,11 +1705,8 @@ def main():
                     save_report_data(report_data)
                     print(f"  -> [SKIP] {msg}")
 
-            except Exception as e:
-                fail_count += 1
-                print(f"  -> [ERROR] Terjadi exception: {e}")
-                if check_is_bot_or_blocked(page):
-                    resolve_bot_detection(page, link)
+                # Selesai memproses item ini (berhasil/gagal/skip), keluar dari while loop
+                break
 
             # Jeda antar link untuk simulasi manusia dan keamanan WAF
             if status and status.startswith("SKIP"):

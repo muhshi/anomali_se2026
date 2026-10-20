@@ -50,6 +50,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-20
+- **Penanganan Otomatis Sesi Terputus / VPN Disconnect & Auto-Pause (`ubah_jenis_kawasan.py`)**:
+  - Menambahkan deteksi otomatis gangguan jaringan, sesi logout SSO BPS, atau VPN terputus (`ERR_INTERNET_DISCONNECTED`, `Checking the connection`, redirect ke halaman login, atau halaman blank).
+  - Ketika gangguan terjadi, bot **TIDAK** memasukkan link tersebut ke cache (`processed_jenis_kawasan.json`) dan **TIDAK** mencatatnya sebagai kegagalan permanen.
+  - Bot secara otomatis **menghentikan sementara (pause)** proses dan memunculkan notifikasi di terminal agar pengguna dapat memeriksa koneksi VPN dan login ulang di browser.
+  - Setelah pengguna selesai login ulang dan menekan `ENTER`, bot langsung melanjutkan dan mencoba ulang (*retry*) link tersebut tanpa ada data yang terlewat.
+  - Membersihkan pencatatan gagal sementara dari file laporan saat terjadi pemutusan koneksi.
 - **Penambahan Alur Remark / Catatan Pertanyaan 8.d & Presisi Switch Anomali (`ubah_jenis_kawasan.py`)**:
   - Menambahkan penanganan otomatis pengisian catatan/remark pada rincian pertanyaan **8. d. Jenis kawasan beroperasi**:
     1. Mengklik tombol ikon catatan (`button[title="Catatan"]`).
