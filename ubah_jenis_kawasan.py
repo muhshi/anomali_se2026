@@ -847,6 +847,202 @@ def change_jenis_kawasan_to_10(page):
 
     return res
 
+def add_remark_jenis_kawasan(page, catatan_text="#1"):
+    """
+    Menambahkan catatan / remark '#1' pada pertanyaan '8. d. Jenis kawasan beroperasi':
+    1. Klik tombol Catatan (speech bubble) di sebelah kanan pertanyaan jenis kawasan:
+       <button title="Catatan" aria-label="Catatan">
+    2. Isi textarea / field 'Tambah Catatan' dengan '#1'
+    3. Klik tombol Simpan (paper plane icon):
+       <button title="Simpan">
+    4. Tutup dialog remark
+    """
+    print(f"  -> Menambahkan catatan/remark '{catatan_text}' pada pertanyaan Jenis Kawasan...")
+    time.sleep(1.0)
+
+    # 1. Klik tombol Catatan di sebelah kanan pertanyaan Jenis Kawasan
+    btn_opened = False
+
+    # A. Coba Playwright locator pada baris/container Jenis Kawasan
+    try:
+        row_kawasan = page.locator("div, tr, fieldset").filter(has_text=re.compile(r"8\s*[\.\-]?\s*d|jenis\s+kawasan", re.IGNORECASE)).filter(has=page.locator("button[title='Catatan'], button[aria-label='Catatan'], [role='button'][title='Catatan']")).first
+        if row_kawasan.count() > 0:
+            catatan_btn = row_kawasan.locator("button[title='Catatan'], button[aria-label='Catatan'], [role='button'][title='Catatan']").first
+            if catatan_btn.count() > 0:
+                catatan_btn.scroll_into_view_if_needed(timeout=2000)
+                catatan_btn.click(timeout=3000, force=True)
+                btn_opened = True
+                print("     [OK] Tombol Catatan diklik via Playwright row locator.")
+    except Exception:
+        pass
+
+    # B. Evaluasi JavaScript DOM untuk menemukan tombol Catatan pertanyaan 8.d
+    if not btn_opened:
+        try:
+            res_open = page.evaluate('''() => {
+                function clickEl(el) {
+                    el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    const rect = el.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2;
+                    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                    el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                    el.dispatchEvent(new MouseEvent('mousedown', opts));
+                    el.dispatchEvent(new PointerEvent('pointerup', opts));
+                    el.dispatchEvent(new MouseEvent('mouseup', opts));
+                    el.click();
+                }
+
+                // Cari label pertanyaan jenis kawasan
+                const all = Array.from(document.querySelectorAll('*'));
+                const qLabel = all.find(el => {
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return (t.includes('jenis kawasan') || t.includes('8. d') || t.includes('8.d')) &&
+                           !Array.from(el.children).some(c => (c.innerText || '').toLowerCase().includes('jenis kawasan'));
+                });
+
+                if (qLabel) {
+                    // Cari tombol catatan di parent-parent terdekat
+                    let p = qLabel.parentElement;
+                    for (let i = 0; i < 6; i++) {
+                        if (!p) break;
+                        const btn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
+                        if (btn) {
+                            clickEl(btn);
+                            return { success: true, method: 'closest_parent_btn' };
+                        }
+                        p = p.parentElement;
+                    }
+                }
+
+                // Fallback: tombol Catatan di seluruh dokumen yang terdekat
+                const allCatatanBtns = Array.from(document.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]'));
+                if (allCatatanBtns.length > 0) {
+                    clickEl(allCatatanBtns[0]);
+                    return { success: true, method: 'first_catatan_btn' };
+                }
+
+                return { success: false };
+            }''')
+            if res_open and res_open.get("success"):
+                btn_opened = True
+                print(f"     [OK] Tombol Catatan diklik via JS DOM ({res_open.get('method')}).")
+        except Exception:
+            pass
+
+    if not btn_opened:
+        print("     [Warning] Tombol Catatan pertanyaan jenis kawasan tidak terdeteksi.")
+        return False
+
+    time.sleep(1.2)
+
+    # 2. Isi teks catatan '#1' ke dalam input / textarea
+    text_filled = False
+    try:
+        textarea_loc = page.locator("div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover'], div[class*='dialog'], body").locator("textarea, input[type='text']").last
+        if textarea_loc.count() > 0 and textarea_loc.is_visible():
+            textarea_loc.fill(catatan_text)
+            text_filled = True
+    except Exception:
+        pass
+
+    if not text_filled:
+        try:
+            res_fill = page.evaluate('''(txt) => {
+                const inputs = Array.from(document.querySelectorAll('textarea, input[type="text"]')).filter(el => {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+                });
+                if (inputs.length > 0) {
+                    const targetInput = inputs[inputs.length - 1];
+                    targetInput.value = txt;
+                    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+            }''', catatan_text)
+            if res_fill:
+                text_filled = True
+        except Exception:
+            pass
+
+    if text_filled:
+        print(f"     [OK] Teks catatan '{catatan_text}' berhasil diisikan.")
+    else:
+        print("     [Warning] Field input catatan tidak ditemukan.")
+
+    time.sleep(0.8)
+
+    # 3. Klik tombol Simpan (<button title="Simpan">)
+    save_clicked = False
+    try:
+        save_btn = page.locator("button[title='Simpan'], [role='button'][title='Simpan']").first
+        if save_btn.count() > 0:
+            save_btn.scroll_into_view_if_needed(timeout=2000)
+            save_btn.click(timeout=3000, force=True)
+            save_clicked = True
+            print("     [OK] Tombol Simpan catatan berhasil diklik via Playwright.")
+    except Exception:
+        pass
+
+    if not save_clicked:
+        try:
+            res_save = page.evaluate('''() => {
+                function clickEl(el) {
+                    const rect = el.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2;
+                    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                    el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                    el.dispatchEvent(new MouseEvent('mousedown', opts));
+                    el.dispatchEvent(new PointerEvent('pointerup', opts));
+                    el.dispatchEvent(new MouseEvent('mouseup', opts));
+                    el.click();
+                }
+
+                const btn = document.querySelector('button[title="Simpan"], [role="button"][title="Simpan"]');
+                if (btn) {
+                    clickEl(btn);
+                    return true;
+                }
+                const svgBtn = Array.from(document.querySelectorAll('button')).find(b => {
+                    const path = b.querySelector('svg path[d*="M10 14l11 -11"], svg path[d*="M21 3l-6.5 18"]');
+                    return path !== null;
+                });
+                if (svgBtn) {
+                    clickEl(svgBtn);
+                    return true;
+                }
+                return false;
+            }''')
+            if res_save:
+                save_clicked = True
+                print("     [OK] Tombol Simpan catatan berhasil diklik via JS DOM.")
+        except Exception:
+            pass
+
+    time.sleep(1.2)
+
+    # 4. Tutup dialog remark
+    print("  -> Menutup dialog catatan...")
+    try:
+        close_btn = page.locator("div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover']").locator("button[title='Tutup'], button[aria-label='Close'], button:has-text('Tutup')").first
+        if close_btn.count() > 0 and close_btn.is_visible():
+            close_btn.click(timeout=2000, force=True)
+            time.sleep(0.5)
+    except Exception:
+        pass
+
+    # Selalu tekan Escape untuk memastikan dialog catatan tertutup
+    try:
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
+    except Exception:
+        pass
+
+    return True
+
 def open_menu_catatan(page):
     """Membuka menu 'Catatan' di sidebar."""
     print("  -> Membuka menu Catatan...")
@@ -891,66 +1087,96 @@ def open_menu_catatan(page):
     return False
 
 def ensure_tampilkan_anomali_checked(page):
-    """Memastikan checkbox 'Tampilkan Anomali Usaha dan Keluarga' bernilai true (tercentang)."""
-    print("  -> Memeriksa checkbox 'Tampilkan Anomali Usaha dan Keluarga'...")
+    """
+    Memastikan switch/checkbox 'Tampilkan Anomali Usaha dan Keluarga' bernilai true (tercentang).
+    Struktur HTML:
+    <div class="tw:flex tw:gap-2 ...">
+      <div>Tampilkan Anomali Usaha dan Keluarga</div>
+      <div role="group" id="switch-...">
+        <input type="checkbox" role="switch" id="switch-...-input" value="on" aria-checked="false" ...>
+        <div id="switch-...-control" class="... tw:cursor-pointer ... tw:data-checked:bg-primary ...">
+    """
+    print("  -> Memeriksa switch 'Tampilkan Anomali Usaha dan Keluarga'...")
     time.sleep(1.0)
-    for _ in range(3):
+    for attempt in range(3):
         res = page.evaluate('''() => {
-            function triggerChange(el) {
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
             }
 
             const all = Array.from(document.querySelectorAll('*'));
-            const targetEl = all.find(el => {
-                const t = (el.innerText || el.textContent || '').toLowerCase();
-                return t.includes('tampilkan anomali') && !Array.from(el.children).some(c => (c.innerText || '').toLowerCase().includes('tampilkan anomali'));
+            const labelEl = all.find(el => {
+                const t = getCleanText(el).toLowerCase();
+                return t === 'tampilkan anomali usaha dan keluarga' ||
+                       (t.includes('tampilkan anomali') && !Array.from(el.children).some(c => getCleanText(c).toLowerCase().includes('tampilkan anomali')));
             });
 
-            if (targetEl) {
-                let parent = targetEl.parentElement;
-                for (let i = 0; i < 5; i++) {
-                    if (!parent) break;
-                    const cb = parent.querySelector('input[type="checkbox"]');
-                    if (cb) {
-                        const was_checked = cb.checked;
-                        if (!was_checked) {
-                            cb.scrollIntoView({ behavior: 'instant', block: 'center' });
-                            cb.click();
-                            cb.checked = true;
-                            triggerChange(cb);
-                            return { success: true, toggled: true, was_checked: false };
-                        }
-                        return { success: true, toggled: false, was_checked: true };
-                    }
-                    parent = parent.parentElement;
+            if (!labelEl) return { success: false, reason: 'label_not_found' };
+
+            // Cari baris kontainer terdekat
+            const row = labelEl.closest('div[class*="flex"], tr, div') || labelEl.parentElement?.parentElement?.parentElement;
+
+            // Cari elemen input switch dan control div
+            let input = row ? row.querySelector('input[role="switch"], input[type="checkbox"]') : null;
+            let control = row ? row.querySelector('div[id$="-control"], div[class*="cursor-pointer"], div[role="group"]') : null;
+
+            if (!input) {
+                input = document.querySelector('input[role="switch"], input[name*="switch"]');
+            }
+            if (!control && input) {
+                control = input.parentElement ? input.parentElement.querySelector('div[id$="-control"], div') : null;
+            }
+
+            if (input) {
+                const ariaChecked = input.getAttribute('aria-checked');
+                const isChecked = (ariaChecked === 'true') || input.checked || (control && control.hasAttribute('data-checked'));
+                if (isChecked) {
+                    return { success: true, was_checked: true };
                 }
 
-                // Jika tidak ada input checkbox eksplisit, klik teks/label langsung
-                targetEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-                targetEl.click();
-                return { success: true, toggled: true, was_checked: false, note: "clicked_label" };
+                // Klik control div atau input untuk mengubah ke checked (TRUE)
+                const targetClick = control || input;
+                targetClick.scrollIntoView({ behavior: 'instant', block: 'center' });
+                targetClick.click();
+
+                input.checked = true;
+                input.setAttribute('aria-checked', 'true');
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                return { success: true, was_checked: false, toggled: true };
             }
-            return { success: false };
+
+            if (control) {
+                control.scrollIntoView({ behavior: 'instant', block: 'center' });
+                control.click();
+                return { success: true, toggled: true, note: 'clicked_control' };
+            }
+
+            return { success: false, reason: 'switch_not_found' };
         }''')
 
         if res and res.get("success"):
             if res.get("was_checked"):
-                print("     [OK] Checkbox 'Tampilkan Anomali' sudah bernilai TRUE (tercentang).")
+                print("     [OK] Switch 'Tampilkan Anomali Usaha dan Keluarga' sudah bernilai TRUE (tercentang).")
             else:
-                print("     [OK] Berhasil mencentang checkbox 'Tampilkan Anomali Usaha dan Keluarga' (TRUE).")
+                print("     [OK] Berhasil mengaktifkan switch 'Tampilkan Anomali Usaha dan Keluarga' (TRUE).")
             time.sleep(1.0)
             return True
         time.sleep(1.0)
 
     try:
-        page.locator("text=/Tampilkan Anomali/i").first.click(timeout=3000, force=True)
-        print("     [OK] Checkbox 'Tampilkan Anomali' dicentang via Playwright fallback.")
-        time.sleep(1.0)
-        return True
+        # Fallback Playwright
+        switch_control = page.locator("div").filter(has_text=re.compile(r"Tampilkan Anomali Usaha dan Keluarga", re.I)).locator("[role='switch'], div[id$='-control'], div[class*='cursor-pointer']").first
+        if switch_control.count() > 0:
+            switch_control.click(force=True)
+            print("     [OK] Switch 'Tampilkan Anomali' diaktifkan via Playwright fallback.")
+            time.sleep(1.0)
+            return True
     except Exception:
-        print("     [Info] Checkbox 'Tampilkan Anomali' tidak terdeteksi atau sudah aktif.")
-        return False
+        pass
+
+    return False
 
 def click_kirim_and_confirm(page):
     """
@@ -1167,7 +1393,12 @@ def process_single_assignment(page, item):
 
     time.sleep(0.5)
 
-    # 5. Jika ada tombol Simpan di dalam modal rincian, klik untuk simpan rincian
+    # 5. Tambahkan catatan / remark '#1' pada pertanyaan 8.d Jenis Kawasan
+    add_remark_jenis_kawasan(page, "#1")
+
+    time.sleep(0.5)
+
+    # 6. Jika ada tombol Simpan di dalam modal rincian, klik untuk simpan rincian
     try:
         page.evaluate('''() => {
             const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
@@ -1189,13 +1420,13 @@ def process_single_assignment(page, item):
     except Exception:
         pass
 
-    # 6. Masuk ke menu Catatan
+    # 7. Masuk ke menu Catatan
     open_menu_catatan(page)
 
-    # 7. Pastikan 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE
+    # 8. Pastikan 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE
     ensure_tampilkan_anomali_checked(page)
 
-    # 8. Submit dan konfirmasi bertingkat (konfirm 2x)
+    # 9. Submit dan konfirmasi bertingkat (konfirm 2x)
     print("  -> Menyimpan dan mengirimkan form...")
     kirim_ok, msg_kirim = click_kirim_and_confirm(page)
     if not kirim_ok:

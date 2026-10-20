@@ -49,6 +49,16 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-10-20
+- **Penambahan Alur Remark / Catatan Pertanyaan 8.d & Presisi Switch Anomali (`ubah_jenis_kawasan.py`)**:
+  - Menambahkan penanganan otomatis pengisian catatan/remark pada rincian pertanyaan **8. d. Jenis kawasan beroperasi**:
+    1. Mengklik tombol ikon catatan (`button[title="Catatan"]`).
+    2. Menuliskan catatan `#1` pada field catatan yang muncul.
+    3. Mengklik tombol Simpan (`button[title="Simpan"]` ikon pesawat kertas).
+    4. Menutup dialog catatan.
+  - Memperbarui pendeteksian dan aktivasi switch **Tampilkan Anomali Usaha dan Keluarga** pada menu Catatan menggunakan struktur DOM switch (`input[role="switch"]` dan `id$="-control"` dengan pengecekan `aria-checked="true"`).
+  - Menyempurnakan selector tombol oranye **Lihat Rincian** dengan penargetan spesifik elemen `<button>` (`no_viewport=True` dan `force=True`) agar tidak terhalang tampilan responsive Tailwind `tw:sm:flex`.
+
 ### 2026-10-19
 - **Fitur Bot Ubah Jenis Kawasan ke '10. Diluar kawasan' (`ubah_jenis_kawasan.py`)**:
   - Menambahkan script otomasi baru `ubah_jenis_kawasan.py` untuk menangani anomali isian kawasan pada data SE2026 (seperti file `sqllab_untitled_query_17_20261019T113729.xlsx`).
