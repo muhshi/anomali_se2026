@@ -4,11 +4,18 @@ Bot Otomatisasi Penambahan Catatan / Remark '#0' pada Pertanyaan 27.a
 27. a. Nilai produksi/pendapatan/penjualan barang dan jasa
 Fasih-SM BPS (SE2026)
 
+Mendukung Multi-Sumber Google Sheets:
+1. Sheet 'Dtata_NTB' (gid: 293925488):
+   https://docs.google.com/spreadsheets/d/1ra-HZlqn1md8AIYaZz5VmOg-5Dxj83LYOHrmChvyz0s/edit?gid=293925488#gid=293925488
+2. Sheet 'Data detail anomali' (gid: 0):
+   https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/edit?gid=0#gid=0
+
 Alur Pengerjaan:
-1. Mengambil data anomali langsung dari Google Sheets:
-   https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/export?format=csv&gid=0
+1. Mengambil data anomali live langsung dari Google Sheets.
    Filter default: Kolom 'Petugas Cleaning' = 0
-2. Menu interaktif di terminal untuk filter (Semua / ID Desa / Batch).
+2. Menu interaktif di terminal:
+   - Pilih Sumber Data (Dtata_NTB / Data detail anomali / Gabungkan Keduanya).
+   - Filter Data (Semua data Petugas Cleaning = 0 / ID Desa / Batch).
 3. Membuka link assignment Fasih-SM (/edit).
 4. Masuk ke menu 'SE2026 - L BLOK II: KETERANGAN USAHA/PERUSAHAAN'.
 5. Mencocokkan dan memilih nama usaha di submenu / kartu rincian.
@@ -45,8 +52,22 @@ CACHE_FILE = os.path.join(BASE_DIR, "processed_tambah_remark.json")
 REPORT_EXCEL = os.path.join(BASE_DIR, "laporan_tambah_remark.xlsx")
 REPORT_JSON = os.path.join(BASE_DIR, "laporan_tambah_remark.json")
 
-SHEET_EXPORT_URL = "https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/export?format=csv&gid=0"
 DEFAULT_REMARK_TEXT = "#0"
+
+SHEET_SOURCES = [
+    {
+        "id": "1",
+        "name": "Dtata_NTB (Sheet NTB)",
+        "url": "https://docs.google.com/spreadsheets/d/1ra-HZlqn1md8AIYaZz5VmOg-5Dxj83LYOHrmChvyz0s/export?format=csv&gid=293925488",
+        "backup_filename": "dtata_ntb_backup.csv"
+    },
+    {
+        "id": "2",
+        "name": "Data detail anomali (Sheet 1)",
+        "url": "https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/export?format=csv&gid=0",
+        "backup_filename": "data_detail_anomali_backup.csv"
+    }
+]
 
 # ==============================================================================
 # HELPER CACHE & LAPORAN
@@ -90,7 +111,7 @@ def save_report_data(report_list):
         ws.title = "Rekap Tambah Remark 27a"
 
         headers = [
-            "No", "ID Desa", "Nama Usaha", "Batch", "Petugas Cleaning",
+            "No", "Sumber Sheet", "ID Desa", "Nama Usaha", "Batch", "Petugas Cleaning",
             "Catatan Sheet", "Teks Remark", "Status Pengerjaan", "Keterangan", "Link Fasih", "Waktu Selesai"
         ]
         ws.append(headers)
@@ -98,6 +119,7 @@ def save_report_data(report_list):
         for idx, row in enumerate(report_list, 1):
             ws.append([
                 idx,
+                row.get("source_name", ""),
                 row.get("iddesa", ""),
                 row.get("nama_usaha", ""),
                 row.get("batch_info", ""),
@@ -123,12 +145,13 @@ def save_report_data(report_list):
 # FETCH DATA GOOGLE SHEETS
 # ==============================================================================
 
-def fetch_data_from_google_sheets(url=SHEET_EXPORT_URL):
-    """
-    Mengunduh data CSV live dari Google Sheets dan memfilternya.
-    Menyimpan salinan lokal di folder data sebagai backup.
-    """
-    print("\n-> Menghubungkan ke Google Sheets...")
+def fetch_single_sheet(source_info):
+    """Mengunduh dan membaca satu sumber Google Sheet."""
+    name = source_info["name"]
+    url = source_info["url"]
+    backup_file = os.path.join(DATA_DIR, source_info["backup_filename"])
+
+    print(f"\n-> Menghubungkan ke '{name}'...")
     print(f"   URL: {url}")
 
     req = urllib.request.Request(
@@ -136,33 +159,38 @@ def fetch_data_from_google_sheets(url=SHEET_EXPORT_URL):
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     )
 
+    content = None
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             content = resp.read().decode("utf-8")
     except Exception as e:
-        print(f"\n[ERROR] Gagal mengunduh data dari Google Sheets: {e}")
-        # Coba baca dari backup lokal jika ada
-        backup_csv = os.path.join(DATA_DIR, "data_detail_anomali_backup.csv")
-        if os.path.exists(backup_csv):
-            print(f"-> Mencoba membaca dari backup lokal: {backup_csv}")
-            with open(backup_csv, "r", encoding="utf-8") as f:
+        print(f"   [Warning] Gagal mengunduh live: {e}")
+        if os.path.exists(backup_file):
+            print(f"   -> Menggunakan file backup lokal: {backup_file}")
+            with open(backup_file, "r", encoding="utf-8") as f:
                 content = f.read()
-        else:
-            return []
+
+    if not content:
+        return []
 
     # Simpan backup lokal
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
-        backup_csv = os.path.join(DATA_DIR, "data_detail_anomali_backup.csv")
-        with open(backup_csv, "w", encoding="utf-8") as f:
+        with open(backup_file, "w", encoding="utf-8") as f:
             f.write(content)
     except Exception:
         pass
 
-    # Parse CSV
-    lines = content.splitlines()
-    reader = csv.DictReader(lines)
+    # Parse CSV dengan deteksi baris header
+    lines = [l for l in content.splitlines() if l.strip()]
+    header_idx = 0
+    for idx, l in enumerate(lines[:10]):
+        l_lower = l.lower()
+        if "link_fasih" in l_lower or "nama_usaha" in l_lower:
+            header_idx = idx
+            break
 
+    reader = csv.DictReader(lines[header_idx:])
     data_items = []
     for r_idx, row in enumerate(reader, 2):
         if not row:
@@ -184,6 +212,7 @@ def fetch_data_from_google_sheets(url=SHEET_EXPORT_URL):
         row_num = str(row.get("row_num") or r_idx).strip()
 
         data_items.append({
+            "source_name": name,
             "link": clean_link,
             "raw_link": raw_link,
             "petugas_cleaning": petugas_cleaning,
@@ -194,7 +223,16 @@ def fetch_data_from_google_sheets(url=SHEET_EXPORT_URL):
             "row_num": row_num
         })
 
+    print(f"   [OK] {len(data_items)} data berhasil dimuat dari '{name}'.")
     return data_items
+
+def fetch_data_from_sources(sources_to_load):
+    """Mengunduh dari satu atau lebih Google Sheet dan menggabungkannya."""
+    all_data = []
+    for s in sources_to_load:
+        items = fetch_single_sheet(s)
+        all_data.extend(items)
+    return all_data
 
 # ==============================================================================
 # ANTI-BOT / WAF / SSO HANDLERS
@@ -266,7 +304,7 @@ def check_connection_or_session_lost(page):
 def pause_for_relogin(page, target_link):
     """
     Menghentikan bot sementara ketika sesi terputus atau VPN disconnect,
-    memberi alarm di terminal dan menunggu user login ulang sebelum melanjutkan.
+    memberi notifikasi di terminal dan menunggu user login ulang sebelum melanjutkan.
     """
     print("\n" + "!" * 65)
     print(" [PERHATIAN] KONEKSI VPN TERPUTUS ATAU SESI LOGIN FASIH-SM KELUAR!")
@@ -897,8 +935,22 @@ def main():
     print(" Fasih-SM BPS (SE2026)")
     print("=" * 65)
 
-    # 1. Ambil data live dari Google Sheets
-    raw_data = fetch_data_from_google_sheets()
+    # 1. Pilihan Sumber Data Google Sheets
+    print("\nPILIHAN SUMBER DATA SPREADSHEET:")
+    print("  [1] Dtata_NTB (https://docs.google.com/...gid=293925488) [DEFAULT]")
+    print("  [2] Data detail anomali (https://docs.google.com/...gid=0)")
+    print("  [3] GABUNGKAN SEMUA SHEET (Dtata_NTB + Data detail anomali)")
+
+    src_choice = input("\nPilih sumber data [1/2/3] (Default: 1): ").strip()
+    if src_choice == "2":
+        chosen_sources = [SHEET_SOURCES[1]]
+    elif src_choice == "3":
+        chosen_sources = SHEET_SOURCES
+    else:
+        chosen_sources = [SHEET_SOURCES[0]]
+
+    print(f"\n-> Memuat data dari: {', '.join([s['name'] for s in chosen_sources])}")
+    raw_data = fetch_data_from_sources(chosen_sources)
     if not raw_data:
         print("\n[ERROR] Tidak dapat memuat data dari Google Sheets!")
         input("\nTekan ENTER untuk keluar...")
@@ -912,7 +964,7 @@ def main():
 
     # 3. Pilihan Menu Filter Interaktif di Terminal
     print("\nPILIHAN FILTER DATA:")
-    print("  [0] SEMUA DATA (Petugas Cleaning = 0)")
+    print("  [0] SEMUA DATA (Petugas Cleaning = 0) [DEFAULT]")
     print("  [1] Filter Berdasarkan ID Desa (iddesa)")
     print("  [2] Filter Berdasarkan Batch (batch_info)")
     print("  [3] Tampilkan Semua Petugas Cleaning (Termasuk non-0)")
@@ -997,6 +1049,7 @@ def main():
             link = item["link"]
             nama = item["nama_usaha"]
             desa = item["iddesa"]
+            src_name = item.get("source_name", "")
             cache_key = f"{link}::{nama}"
 
             if cache_key in processed_cache or link in processed_cache:
@@ -1004,7 +1057,7 @@ def main():
                 continue
 
             while True:
-                print(f"\n[{idx}/{total_target}] [{desa}] Memproses: {nama}")
+                print(f"\n[{idx}/{total_target}] [{src_name}] [{desa}] Memproses: {nama}")
                 print(f"  Link: {link}")
 
                 status = None
@@ -1047,6 +1100,7 @@ def main():
 
                 # Catat ke laporan
                 record = {
+                    "source_name": src_name,
                     "iddesa": desa,
                     "nama_usaha": nama,
                     "batch_info": item.get("batch_info", ""),

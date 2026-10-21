@@ -53,8 +53,15 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Dukungan Multi-Sumber Google Sheets (`tambah_remark_27a.py`)**:
+  - Menambahkan dukungan sumber data baru: Google Sheet **`Dtata_NTB`** (gid: `293925488`).
+  - Menambahkan menu pilihan sumber data pada saat bot dijalankan:
+    - `[1] Dtata_NTB` *(Default)*
+    - `[2] Data detail anomali`
+    - `[3] GABUNGKAN SEMUA SHEET (Dtata_NTB + Data detail anomali)`
+  - Kolom `Sumber Sheet` otomatis dicatat pada rekap laporan Excel `laporan_tambah_remark.xlsx`.
 - **Bot Baru: Tambah Remark 27.a Nilai Produksi (`tambah_remark_27a.py` & `run_tambah_remark.bat`)**:
-  - Mengambil data anomali live secara otomatis langsung dari Google Sheets (*Data detail anomali*) dengan default filter kolom `Petugas Cleaning = 0`.
+  - Mengambil data anomali live secara otomatis langsung dari Google Sheets (*Dtata_NTB* dan *Data detail anomali*) dengan default filter kolom `Petugas Cleaning = 0`.
   - Dilengkapi menu interaktif di terminal untuk filter pengerjaan (Semua data, filter berdasarkan ID Desa, filter berdasarkan Batch, dsb).
   - Alur otomatisasi:
     1. Membuka link assignment Fasih-SM (`/edit`).
