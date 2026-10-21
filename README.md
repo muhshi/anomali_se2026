@@ -70,7 +70,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
     4. Mengklik tombol Catatan (speech bubble) pada pertanyaan **27. a. Nilai produksi/pendapatan/penjualan barang dan jasa**.
     5. Mengisikan teks remark **`#0`**, menyimpan catatan, dan menutup popup.
     6. Mengklik tombol simpan pada modal rincian jika ada.
-    7. Langsung lanjut ke assignment berikutnya secara mulus tanpa melakukan Kirim/Konfirmasi form.
+    7. Masuk ke menu **Catatan** di sidebar.
+    8. Memastikan switch/checkbox **Tampilkan Anomali Usaha dan Keluarga** bernilai **TRUE**.
+    9. Mengklik tombol **Kirim** dan menyelesaikan konfirmasi submit bertingkat (konfirm 2x / Submit Paksa).
+    10. Lanjut ke assignment berikutnya secara mulus.
   - Dilengkapi cache resume (`processed_tambah_remark.json`), laporan rekap otomatis (`laporan_tambah_remark.xlsx`), penanganan sesi terputus/VPN disconnect dengan auto-pause & login ulang, serta pemulihan deteksi bot/WAF.
   - Menambahkan menu pilihan **`[5] Bot Tambah Remark 27.a Nilai Produksi`** pada `run.bat` dan file launcher instan **`run_tambah_remark.bat`**.
 

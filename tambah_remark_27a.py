@@ -22,7 +22,10 @@ Alur Pengerjaan:
 6. Menemukan pertanyaan '27. a. Nilai produksi/pendapatan/penjualan barang dan jasa'.
 7. Mengklik tombol Catatan (speech bubble), mengisi teks remark '#0', dan mengklik Simpan catatan.
 8. Menyimpan rincian jika ada tombol Simpan/Selesai di form rincian.
-9. Lanjut ke assignment berikutnya tanpa Kirim/Konfirmasi form.
+9. Masuk ke menu Catatan di sidebar.
+10. Memastikan switch/checkbox 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE.
+11. Mengklik Kirim dan menyelesaikan konfirmasi bertingkat (konfirm 2x / Submit Paksa).
+12. Lanjut ke assignment berikutnya.
 """
 
 import os
@@ -861,6 +864,273 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     return True, "Remark 27.a berhasil ditambahkan"
 
 # ==============================================================================
+# MENU CATATAN, SWITCH ANOMALI & KIRIM KONFIRMASI
+# ==============================================================================
+
+def open_menu_catatan(page):
+    """Membuka menu 'Catatan' di sidebar."""
+    print("  -> Membuka menu Catatan...")
+    for attempt in range(3):
+        try:
+            page.get_by_role("tab", name=re.compile(r"Catatan", re.IGNORECASE)).click(timeout=3000)
+            time.sleep(1.5)
+            return True
+        except Exception:
+            pass
+
+        try:
+            catatan_btn = page.locator("a, button, [role='tab'], li").filter(has_text=re.compile(r"^Catatan$", re.IGNORECASE)).first
+            if catatan_btn.is_visible():
+                catatan_btn.click(timeout=3000)
+                time.sleep(1.5)
+                return True
+        except Exception:
+            pass
+
+        res = page.evaluate('''() => {
+            const all = Array.from(document.querySelectorAll('*'));
+            const matches = all.filter(el => {
+                const t = (el.innerText || el.textContent || '').trim();
+                return /^catatan$/i.test(t) && !Array.from(el.children).some(c => /^catatan$/i.test((c.innerText || c.textContent || '').trim()));
+            });
+            if (matches.length > 0) {
+                const target = matches[0];
+                const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || target;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                clickable.click();
+                return true;
+            }
+            return false;
+        }''')
+        if res:
+            time.sleep(1.5)
+            return True
+        time.sleep(1.0)
+
+    print("     [Warning] Menu 'Catatan' tidak terdeteksi langsung.")
+    return False
+
+def ensure_tampilkan_anomali_checked(page):
+    """
+    Memastikan switch/checkbox 'Tampilkan Anomali Usaha dan Keluarga' bernilai true (tercentang).
+    Struktur HTML:
+    <div class="tw:flex tw:gap-2 ...">
+      <div>Tampilkan Anomali Usaha dan Keluarga</div>
+      <div role="group" id="switch-...">
+        <input type="checkbox" role="switch" id="switch-...-input" value="on" aria-checked="false" ...>
+        <div id="switch-...-control" class="... tw:cursor-pointer ... tw:data-checked:bg-primary ...">
+    """
+    print("  -> Memeriksa switch 'Tampilkan Anomali Usaha dan Keluarga'...")
+    time.sleep(1.0)
+    for attempt in range(3):
+        res = page.evaluate('''() => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
+
+            const all = Array.from(document.querySelectorAll('*'));
+            const labelEl = all.find(el => {
+                const t = getCleanText(el).toLowerCase();
+                return t === 'tampilkan anomali usaha dan keluarga' ||
+                       (t.includes('tampilkan anomali') && !Array.from(el.children).some(c => getCleanText(c).toLowerCase().includes('tampilkan anomali')));
+            });
+
+            if (!labelEl) return { success: false, reason: 'label_not_found' };
+
+            // Cari baris kontainer terdekat
+            const row = labelEl.closest('div[class*="flex"], tr, div') || labelEl.parentElement?.parentElement?.parentElement;
+
+            // Cari elemen input switch dan control div
+            let input = row ? row.querySelector('input[role="switch"], input[type="checkbox"]') : null;
+            let control = row ? row.querySelector('div[id$="-control"], div[class*="cursor-pointer"], div[role="group"]') : null;
+
+            if (!input) {
+                input = document.querySelector('input[role="switch"], input[name*="switch"]');
+            }
+            if (!control && input) {
+                control = input.parentElement ? input.parentElement.querySelector('div[id$="-control"], div') : null;
+            }
+
+            if (input) {
+                const ariaChecked = input.getAttribute('aria-checked');
+                const isChecked = (ariaChecked === 'true') || input.checked || (control && control.hasAttribute('data-checked'));
+                if (isChecked) {
+                    return { success: true, was_checked: true };
+                }
+
+                // Klik control div atau input untuk mengubah ke checked (TRUE)
+                const targetClick = control || input;
+                targetClick.scrollIntoView({ behavior: 'instant', block: 'center' });
+                targetClick.click();
+
+                input.checked = true;
+                input.setAttribute('aria-checked', 'true');
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                return { success: true, was_checked: false, toggled: true };
+            }
+
+            if (control) {
+                control.scrollIntoView({ behavior: 'instant', block: 'center' });
+                control.click();
+                return { success: true, toggled: true, note: 'clicked_control' };
+            }
+
+            return { success: false, reason: 'switch_not_found' };
+        }''')
+
+        if res and res.get("success"):
+            if res.get("was_checked"):
+                print("     [OK] Switch 'Tampilkan Anomali Usaha dan Keluarga' sudah bernilai TRUE (tercentang).")
+            else:
+                print("     [OK] Berhasil mengaktifkan switch 'Tampilkan Anomali Usaha dan Keluarga' (TRUE).")
+            time.sleep(1.0)
+            return True
+        time.sleep(1.0)
+
+    try:
+        # Fallback Playwright
+        switch_control = page.locator("div").filter(has_text=re.compile(r"Tampilkan Anomali Usaha dan Keluarga", re.I)).locator("[role='switch'], div[id$='-control'], div[class*='cursor-pointer']").first
+        if switch_control.count() > 0:
+            switch_control.click(force=True)
+            print("     [OK] Switch 'Tampilkan Anomali' diaktifkan via Playwright fallback.")
+            time.sleep(1.0)
+            return True
+    except Exception:
+        pass
+
+    return False
+
+def click_kirim_and_confirm(page):
+    """
+    Mengklik tombol 'Kirim' / 'Submit' dan menyelesaikan konfirmasi modal bertingkat (konfirm 2x).
+    """
+    time.sleep(1.0)
+
+    # 1. Coba klik tombol Kirim / Submit
+    kirim_clicked = False
+    try:
+        kirim_btn = page.get_by_role("button", name=re.compile(r"^Kirim$|^Submit$", re.IGNORECASE)).first
+        if kirim_btn.is_visible():
+            kirim_btn.scroll_into_view_if_needed(timeout=2000)
+            kirim_btn.click(timeout=4000)
+            kirim_clicked = True
+    except Exception:
+        pass
+
+    if not kirim_clicked:
+        kirim_clicked = page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll('button')).filter(b => {
+                const style = window.getComputedStyle(b);
+                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+            });
+            const target = btns.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return t === 'kirim' || t === 'submit' || t === 'simpan' || t.includes('kirim');
+            });
+            if (target) {
+                target.scrollIntoView({ behavior: 'instant', block: 'center' });
+                target.click();
+                return true;
+            }
+            return false;
+        }''')
+
+    if kirim_clicked:
+        print("     [OK] Tombol 'Kirim' / 'Submit' diklik.")
+    time.sleep(1.5)
+
+    # 2. Tangani dialog / modal konfirmasi bertingkat (konfirm 1 & konfirm 2)
+    print("  -> Menangani konfirmasi submit (konfirm 2x)...")
+    for step_konfirm in range(1, 4):
+        modal_handled = False
+        try:
+            modal_handled = page.evaluate('''() => {
+                const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
+                    const style = window.getComputedStyle(b);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+                });
+                const confirmBtn = btns.find(b => {
+                    const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                    return (
+                        t === 'ya' || 
+                        t === 'konfirmasi' || 
+                        t === 'submit' || 
+                        t === 'setuju' || 
+                        t === 'lanjutkan' || 
+                        t.includes('ya, submit') || 
+                        t.includes('ya, kirim') || 
+                        t.includes('ya, simpan') ||
+                        t.includes('ya, lanjutkan')
+                    );
+                });
+                if (confirmBtn) {
+                    confirmBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    confirmBtn.click();
+                    return { success: true, text: (confirmBtn.innerText || confirmBtn.textContent || '').trim() };
+                }
+                return { success: false };
+            }''')
+        except Exception:
+            pass
+
+        if modal_handled and modal_handled.get("success"):
+            print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik: '{modal_handled.get('text')}'")
+            time.sleep(2.0)
+        else:
+            # Fallback Playwright jika tombol ada di dialog
+            try:
+                conf_btns = page.locator("button").filter(has_text=re.compile(r"Kirim|Ya|Konfirmasi|Setuju|Lanjut|Submit", re.IGNORECASE)).all()
+                vis = [b for b in conf_btns if b.is_visible()]
+                if len(vis) > 0:
+                    vis[-1].click(timeout=2000)
+                    print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik via Playwright fallback.")
+                    time.sleep(2.0)
+                else:
+                    break
+            except Exception:
+                break
+
+    # 3. Cek apakah ada split dropdown (titik tiga) / Submit Paksa jika form membutuhkan override
+    try:
+        page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            const splitBtn = btns.find(b => (b.className || '').includes('border-l') || (b.className || '').includes('rounded-r-lg'));
+            if (splitBtn && splitBtn.offsetParent !== null) {
+                splitBtn.click();
+            }
+        }''')
+        time.sleep(0.5)
+        page.evaluate('''() => {
+            const all = Array.from(document.querySelectorAll('button, [role="menuitem"], div, span'));
+            const paksa = all.find(el => (el.innerText || el.textContent || '').trim().toLowerCase() === 'submit paksa');
+            if (paksa && paksa.offsetParent !== null) {
+                paksa.click();
+            }
+        }''')
+    except Exception:
+        pass
+
+    # 4. Tunggu pengiriman data ke server Fasih
+    time.sleep(2.0)
+
+    # Cek toast error 'failed to fetch'
+    has_fetch_error = False
+    try:
+        has_fetch_error = page.evaluate('''() => {
+            const t = ((document.body.innerText || '') + ' ' + (document.body.textContent || '')).toLowerCase();
+            return t.includes('failed to fetch');
+        }''')
+    except Exception:
+        pass
+
+    if has_fetch_error:
+        return False, "Toast 'Failed to fetch' muncul setelah kirim"
+
+    return True, "Berhasil dikirim dan dikonfirmasi"
+
+# ==============================================================================
 # PEMROSESAN SATU ASSIGNMENT
 # ==============================================================================
 
@@ -872,7 +1142,9 @@ def process_single_assignment(page, item):
     3. Pilih usaha sesuai nama_usaha
     4. Isi catatan #0 pada pertanyaan 27.a
     5. Simpan rincian (jika ada tombol)
-    6. Lanjut ke next tanpa kirim dan konfirmasi.
+    6. Masuk ke menu Catatan
+    7. Pastikan 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE
+    8. Kirim dan konfirmasi form (konfirm 2x / Submit Paksa).
     """
     link = item["link"]
     nama_usaha = item.get("nama_usaha", "")
@@ -923,7 +1195,22 @@ def process_single_assignment(page, item):
     if not remark_ok:
         return "FAILED_REMARK", remark_msg
 
-    return "SUCCESS", "Catatan #0 berhasil ditambahkan pada pertanyaan 27.a"
+    time.sleep(1.0)
+
+    # 4. Masuk ke menu Catatan di sidebar
+    open_menu_catatan(page)
+
+    # 5. Pastikan 'Tampilkan Anomali Usaha dan Keluarga' bernilai TRUE
+    ensure_tampilkan_anomali_checked(page)
+
+    # 6. Submit dan konfirmasi bertingkat (konfirm 2x)
+    print("  -> Menyimpan dan mengirimkan form...")
+    kirim_ok, msg_kirim = click_kirim_and_confirm(page)
+    if not kirim_ok:
+        print(f"  -> [GAGAL] Pengiriman form gagal: {msg_kirim}")
+        return "FAILED_SUBMIT", msg_kirim
+
+    return "SUCCESS", "Remark #0 berhasil ditambahkan & form berhasil dikirim dan dikonfirmasi"
 
 # ==============================================================================
 # MAIN RUNNER
@@ -1087,7 +1374,7 @@ def main():
                     processed_cache.add(link)
                     save_cache(processed_cache)
                     success_count += 1
-                    print(f"  -> [BERHASIL] Remark '#0' ditambahkan pada 27.a! Lanjut berikutnya.")
+                    print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
                 elif status.startswith("SKIP_"):
                     processed_cache.add(cache_key)
                     processed_cache.add(link)
