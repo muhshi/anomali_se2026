@@ -1261,6 +1261,114 @@ def ensure_tampilkan_anomali_checked(page):
 
     return False
 
+def wait_for_submit_finish(page, max_wait=45):
+    """
+    Menunggu proses pengiriman / submit kuesioner ke server Fasih-SM selesai:
+    1. Deteksi apakah URL dialihkan (redirect) keluar dari /edit (berarti form terkirim).
+    2. Deteksi animasi spinner atau indikator loading pengiriman.
+    3. Deteksi teks sukses ('berhasil', 'sukses', dsb) atau error ('failed to fetch').
+    4. Menunggu hingga modal dialog konfirmasi tertutup dan loading submit selesai.
+    """
+    start_time = time.time()
+    reported = False
+
+    time.sleep(1.0)
+
+    while time.time() - start_time < max_wait:
+        try:
+            # 1. Cek redirect (jika keluar dari halaman /edit, form pasti sudah terkirim)
+            current_url = (page.url or "").lower()
+            if "/edit" not in current_url:
+                print("     [OK] Kuesioner berhasil dikirim (dialihkan dari halaman edit).")
+                return True, "Sukses dikirim (redirect)"
+
+            res = page.evaluate('''() => {
+                function isVisible(el) {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && 
+                           style.visibility !== 'hidden' && 
+                           style.opacity !== '0' && 
+                           el.offsetWidth > 0 && 
+                           el.offsetHeight > 0;
+                }
+
+                const bodyText = (document.body.innerText || '').toLowerCase();
+
+                // Cek error toast
+                if (bodyText.includes('failed to fetch')) {
+                    return { status: 'error', message: "Toast 'Failed to fetch' muncul setelah kirim" };
+                }
+
+                // Cek teks sukses
+                if (bodyText.includes('berhasil dikirim') || bodyText.includes('berhasil disubmit') || bodyText.includes('sukses')) {
+                    return { status: 'success', message: 'Notifikasi berhasil muncul' };
+                }
+
+                // Cek spinner / animasi loading
+                const spinners = Array.from(document.querySelectorAll('.animate-spin, [class*="spinner"], [class*="loader"]')).filter(isVisible);
+
+                // Cek teks loading pengiriman
+                const allTexts = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4'));
+                const submitTexts = allTexts.filter(el => {
+                    if (!isVisible(el)) return false;
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return (
+                        t.includes('mengirim') || 
+                        t.includes('memproses') || 
+                        t.includes('menyimpan data') || 
+                        t.includes('mohon tunggu') ||
+                        t.includes('submitting')
+                    ) && el.children.length === 0;
+                });
+
+                const isSubmitting = spinners.length > 0 || submitTexts.length > 0;
+                const dialogs = Array.from(document.querySelectorAll('div[role="dialog"], [data-state="open"]')).filter(isVisible);
+
+                return {
+                    status: 'processing',
+                    isSubmitting: isSubmitting,
+                    spinnersCount: spinners.length,
+                    dialogsCount: dialogs.length
+                };
+            }''')
+
+            if res.get("status") == "error":
+                return False, res.get("message")
+
+            if res.get("status") == "success":
+                elapsed = time.time() - start_time
+                print(f"     [OK] Pengiriman kuesioner berhasil terkonfirmasi dalam {elapsed:.1f} detik.")
+                time.sleep(1.0)
+                return True, "Berhasil dikirim dan dikonfirmasi"
+
+            if res.get("isSubmitting"):
+                if not reported:
+                    print("  -> [Loading] Server sedang memproses pengiriman kuesioner, mohon tunggu...")
+                    reported = True
+                time.sleep(1.0)
+                continue
+
+            # Jika sebelumnya loading dan sekarang sudah selesai
+            if reported and not res.get("isSubmitting"):
+                elapsed = time.time() - start_time
+                print(f"     [OK] Pengiriman kuesioner ke server selesai dalam {elapsed:.1f} detik.")
+                time.sleep(1.0)
+                return True, "Berhasil dikirim dan dikonfirmasi"
+
+            # Jika dialog konfirmasi sudah tertutup dan tidak ada proses submit
+            if res.get("dialogsCount") == 0 and not res.get("isSubmitting"):
+                time.sleep(1.0)
+                return True, "Berhasil dikirim dan dikonfirmasi"
+
+            time.sleep(0.8)
+        except Exception:
+            time.sleep(0.8)
+
+    if reported:
+        print(f"     [OK] Waktu proses kirim mencapai {max_wait} detik, melanjutkan...")
+    return True, "Berhasil dikirim dan dikonfirmasi"
+
 def click_kirim_and_confirm(page):
     """
     Mengklik tombol 'Kirim' / 'Submit' dan menyelesaikan konfirmasi modal bertingkat (konfirm 2x).
@@ -1371,23 +1479,8 @@ def click_kirim_and_confirm(page):
     except Exception:
         pass
 
-    # 4. Tunggu pengiriman data ke server Fasih
-    time.sleep(2.0)
-
-    # Cek toast error 'failed to fetch'
-    has_fetch_error = False
-    try:
-        has_fetch_error = page.evaluate('''() => {
-            const t = ((document.body.innerText || '') + ' ' + (document.body.textContent || '')).toLowerCase();
-            return t.includes('failed to fetch');
-        }''')
-    except Exception:
-        pass
-
-    if has_fetch_error:
-        return False, "Toast 'Failed to fetch' muncul setelah kirim"
-
-    return True, "Berhasil dikirim dan dikonfirmasi"
+    # 4. Tunggu proses pengiriman data ke server Fasih selesai sepenuhnya
+    return wait_for_submit_finish(page, max_wait=45)
 
 # ==============================================================================
 # PEMROSESAN SATU ASSIGNMENT

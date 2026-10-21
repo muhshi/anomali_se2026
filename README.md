@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Penanganan Loading Submit / Konfirmasi Kirim Kuesioner (`tambah_remark_27a.py`)**:
+  - Menambahkan fungsi `wait_for_submit_finish` untuk menangani proses loading saat menekan tombol konfirmasi submit kuesioner (*"Ya, kirim"* / *"Konfirmasi"*).
+  - Bot secara dinamis menunggu hingga respon server selesai, loading spinner pengiriman hilang, notifikasi sukses muncul, atau halaman dialihkan (*redirect*).
+  - Mencegah bot terburu-buru berpindah ke assignment berikutnya sebelum server Fasih-SM selesai menyimpan data kiriman formulir.
 - **Optimasi Deteksi Kuesioner Siap & Penghilangan False Positive Overlay (`tambah_remark_27a.py`)**:
   - Memperbaiki bug false positive deteksi overlay backdrop (`.fixed.inset-0` + `svg`) yang menyebabkan bot macet berputar lama menunggu padahal formulir kuesioner sudah tampil di layar.
   - Mengimplementasikan `wait_for_kuesioner_ready` khusus saat awal membuka link assignment `/edit`. Bot secara cerdas mendeteksi kemunculan elemen kuesioner (`SE2026`, `BLOK`, atau navigasi sidebar). Begitu kuesioner ter-render dan loading splash screen hilang, bot langsung melanjutkan proses seketika tanpa menunggu timeout.
