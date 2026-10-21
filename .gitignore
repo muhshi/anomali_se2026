@@ -16,6 +16,7 @@ laporan_status_ditemukan.json
 laporan_usaha_sudah_diganti.json
 laporan_jenis_kawasan.json
 laporan_tambah_remark.json
+sheet_sync_config.json
 
 # Data files
 data/*

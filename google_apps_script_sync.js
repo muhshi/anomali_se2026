@@ -5,24 +5,27 @@
  * 
  * Script ini digunakan untuk menghubungkan bot Python (tambah_remark_27a.py)
  * dengan Google Spreadsheet secara live. Ketika bot selesai memproses baris data:
- * 1. Otomatis menambahkan kolom "Status Pengerjaan" jika belum ada.
- * 2. Mengisi status "SELESAI" pada baris yang dikerjakan.
- * 3. Memberi warna hijau lembut (#d9ead3) pada seluruh baris yang selesai.
- * 4. Mendukung banyak bot/pengguna berjalan bersamaan (menggunakan ScriptLock).
+ * 1. Otomatis mencari tab data yang tepat (berdasarkan gid=0 / nama tab / kolom link_fasih).
+ * 2. Otomatis menambahkan kolom "Status Pengerjaan" jika belum ada.
+ * 3. Mengisi status "SELESAI (Nama Operator)" pada baris yang dikerjakan.
+ * 4. Memberi warna hijau lembut (#d9ead3) pada seluruh baris yang selesai.
+ * 5. Mendukung banyak bot/pengguna berjalan bersamaan (menggunakan ScriptLock).
  * 
  * ------------------------------------------------------------------------------
  * CARA MEMASANG (HANYA 1 MENIT):
  * ------------------------------------------------------------------------------
- * 1. Buka Google Spreadsheet target:
- *    https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/edit?gid=0#gid=0
+ * 1. Buka Google Spreadsheet target Anda:
+ *    - Untuk Data detail anomali: https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/edit?gid=0#gid=0
+ *    - (Jika ada sheet kedua, lakukan langkah yang sama pada spreadsheet kedua).
  * 2. Di menu atas, klik: 'Ekstensi' (Extensions) -> 'Apps Script'.
  * 3. Hapus seluruh isi kode default yang ada di layar editor,
  *    lalu COPY-PASTE SELURUH kode file ini ke sana.
  * 4. Klik ikon Disket (Simpan / Ctrl+S). Beri nama proyek misalnya: "Sync Remark SE2026".
- * 5. Klik tombol biru 'Terapkan' (Deploy) di pojok kanan atas -> pilih 'Deployment baru' (New deployment).
+ * 5. Klik tombol biru 'Terapkan' (Deploy) di pojok kanan atas -> pilih 'Kelola deployment' jika mengupdate,
+ *    atau 'Deployment baru' (New deployment) jika baru pertama kali.
  * 6. Di samping tulisan "Pilih jenis", klik ikon Roda Gigi (Gear) -> pilih 'Aplikasi web' (Web app).
  * 7. Isi form pengaturan berikut:
- *    - Deskripsi          : Sync Remark SE2026
+ *    - Deskripsi          : Sync Remark SE2026 v2
  *    - Jalankan sebagai   : 'Saya' (Me - email akun Google Anda)
  *    - Yang memiliki akses: 'Siapa saja' (Anyone)  <--- [PENTING!]
  * 8. Klik tombol 'Terapkan' (Deploy).
@@ -33,7 +36,7 @@
  *    - Klik 'Go to Sync Remark SE2026 (unsafe)'
  *    - Klik tombol 'Allow' / 'Izinkan'
  * 10. Salin "URL Aplikasi web" yang diberikan (berformat: https://script.google.com/macros/s/.../exec).
- * 11. Masukkan URL tersebut ke file 'sheet_sync_config.json' di folder bot ini, atau masukkan saat bot dijalankan.
+ * 11. Masukkan URL tersebut ke file 'sheet_sync_config.json' di folder bot.
  * ==============================================================================
  */
 
@@ -57,11 +60,7 @@ function handleRequest(e) {
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    // Cari sheet target: 'Data detail anomali', atau 'Dtata_NTB', atau sheet pertama aktif
-    var sheet = ss.getSheetByName("Data detail anomali") || 
-                ss.getSheetByName("Dtata_NTB") || 
-                ss.getSheetByName("Sheet1") || 
-                ss.getActiveSheet();
+    var allSheets = ss.getSheets();
 
     var params = {};
     if (e && e.postData && e.postData.contents) {
@@ -74,12 +73,64 @@ function handleRequest(e) {
       params = e.parameter;
     }
 
+    // 1. CARI TAB TARGET SECARA CERDAS & AKURAT
+    var sheet = null;
+
+    // A. Cari berdasarkan parameter gid (misal gid=0 atau gid=293925488)
+    if (params.gid !== undefined && params.gid !== null && params.gid !== "") {
+      var reqGid = parseInt(params.gid);
+      for (var s = 0; s < allSheets.length; s++) {
+        if (allSheets[s].getSheetId() === reqGid) {
+          sheet = allSheets[s];
+          break;
+        }
+      }
+    }
+
+    // B. Cari tab yang memiliki kolom 'link_fasih' atau 'link_fasih_sm'
+    if (!sheet) {
+      for (var s = 0; s < allSheets.length; s++) {
+        var numCols = Math.min(allSheets[s].getLastColumn(), 35);
+        if (numCols > 0) {
+          var testHeaders = allSheets[s].getRange(1, 1, 1, numCols).getValues()[0];
+          var hasLink = testHeaders.some(function(h) {
+            var strH = String(h || "").toLowerCase();
+            return strH.includes("link_fasih");
+          });
+          if (hasLink) {
+            sheet = allSheets[s];
+            break;
+          }
+        }
+      }
+    }
+
+    // C. Cari berdasarkan kandidat nama sheet (case-insensitive)
+    if (!sheet) {
+      var candidates = ["data detail anomali", "dtata_ntb", "dtata ntb", "sheet1", "data anomali", "anomali"];
+      for (var s = 0; s < allSheets.length; s++) {
+        var sName = allSheets[s].getName().trim().toLowerCase();
+        for (var c = 0; c < candidates.length; c++) {
+          if (sName === candidates[c] || sName.includes(candidates[c])) {
+            sheet = allSheets[s];
+            break;
+          }
+        }
+        if (sheet) break;
+      }
+    }
+
+    if (!sheet) {
+      sheet = ss.getActiveSheet();
+    }
+
     // Ping / Test Endpoint
     if (params.action === "ping" || params.action === "test") {
       return ContentService.createTextOutput(JSON.stringify({
         status: "ok",
         message: "Google Apps Script Sync SE2026 aktif! Terhubung ke spreadsheet: " + ss.getName(),
         sheet_name: sheet.getName(),
+        sheet_gid: sheet.getSheetId(),
         total_rows: sheet.getLastRow(),
         total_cols: sheet.getLastColumn()
       })).setMimeType(ContentService.MimeType.JSON);
@@ -95,7 +146,7 @@ function handleRequest(e) {
     var lastCol = sheet.getLastColumn();
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     
-    // 1. Cari atau buat kolom 'Status Pengerjaan'
+    // 2. Cari atau buat kolom 'Status Pengerjaan'
     var statusColIdx = -1;
     for (var i = 0; i < headers.length; i++) {
       var h = String(headers[i] || "").trim().toLowerCase();
@@ -112,7 +163,7 @@ function handleRequest(e) {
       sheet.getRange(1, statusColIdx).setBackground("#e0e0e0");
     }
 
-    // 2. Cari baris target di spreadsheet
+    // 3. Cari baris target di spreadsheet
     var targetRow = -1;
     var data = sheet.getDataRange().getValues();
 
@@ -140,7 +191,6 @@ function handleRequest(e) {
 
     // B. Jika row_num tidak cocok, cari scan seluruh baris berdasarkan link Fasih-SM
     if (targetRow === -1 && linkColIdx !== -1 && targetLink) {
-      // Potong link bersih tanpa /edit atau query parameter untuk pencocokan akurat
       var cleanTarget = targetLink.split("?")[0].replace(/\/edit\/?$/, "").trim();
       for (var r = 1; r < data.length; r++) {
         var cLink = String(data[r][linkColIdx] || "").split("?")[0].replace(/\/edit\/?$/, "").trim();
@@ -171,7 +221,7 @@ function handleRequest(e) {
     }
 
     if (targetRow > 1) {
-      // 1. Tulis status pengerjaan
+      // 1. Tulis status pengerjaan beserta nama operator jika ada
       var finalStatus = statusText;
       if (operator) {
         finalStatus += " (" + operator + ")";
@@ -185,13 +235,15 @@ function handleRequest(e) {
       SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
+        sheet: sheet.getName(),
         row: targetRow,
-        message: "Baris " + targetRow + " berhasil diperbarui menjadi '" + finalStatus + "' dan diwarnai hijau."
+        message: "Tab '" + sheet.getName() + "' baris " + targetRow + " berhasil diperbarui menjadi '" + finalStatus + "' dan diwarnai hijau."
       })).setMimeType(ContentService.MimeType.JSON);
     } else {
       return ContentService.createTextOutput(JSON.stringify({
         status: "not_found",
-        message: "Data target tidak ditemukan di spreadsheet."
+        sheet: sheet.getName(),
+        message: "Data target tidak ditemukan pada tab '" + sheet.getName() + "'."
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

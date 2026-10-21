@@ -53,6 +53,14 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Dukungan Multi-Spreadsheet & Keamanan Script URL (`sheet_sync_config.json` & `.gitignore`)**:
+  - Menambahkan dukungan sinkronisasi ke multi-spreadsheet (`gas_webapp_urls`): jika pengguna mengerjakan *Data detail anomali* atau *Dtata_NTB*, bot secara cerdas mengarahkan request ke URL Apps Script spreadsheet yang bersangkutan.
+  - Memasukkan `sheet_sync_config.json` ke `.gitignore` sehingga URL Web App privat dan nama operator **tidak akan pernah ter-push ke GitHub**. Disediakan `sheet_sync_config.example.json` sebagai template repositori.
+  - **Penyempurnaan Google Apps Script v2**: Apps Script kini mendeteksi tab target secara otomatis via parameter `gid` (misal `gid=0` atau `gid=293925488`), pencocokan nama tab non-case-sensitive, maupun deteksi kolom header `link_fasih`, sehingga 100% tepat sasaran meskipun nama tab diubah atau diurutkan ulang.
+- **Registrasi Nama Operator Otomatis (`tambah_remark_27a.py`)**:
+  - Jika nama operator di `sheet_sync_config.json` masih kosong, terminal akan otomatis meminta nama/panggilan pengguna hanya pada saat run pertama kali.
+  - Nama tersebut otomatis disimpan di konfigurasi lokal sehingga tidak akan ditanyakan lagi pada run berikutnya.
+  - Nama operator otomatis dicantumkan di kolom spreadsheet: `SELESAI (Nama Operator)` agar rekan kerja mengetahui siapa yang memproses baris tersebut.
 - **Filter Berdasarkan Kecamatan & Auto-Hide Wilayah Selesai (`tambah_remark_27a.py`)**:
   - Menambahkan menu filter baru **`[1] Filter Berdasarkan Kecamatan`** yang mengelompokkan data berdasarkan kode & nama resmi kecamatan di Kab. Demak (3321).
   - **Sistem Auto-Hide Wilayah Selesai**: Kecamatan, Desa, atau Batch yang seluruh datanya sudah berstatus selesai (di cache lokal maupun spreadsheet) otomatis disembunyikan dari daftar pilihan terminal sehingga pengguna tidak akan memilih wilayah kosong/sudah beres.

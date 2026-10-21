@@ -142,6 +142,13 @@ def save_sync_config(cfg):
 def _do_sync_request(url, item, status="SELESAI", operator=""):
     """Mengirim request update baris ke Google Apps Script Web App."""
     try:
+        # Deteksi gid jika ada di nama sumber data
+        source_name = item.get("source_name", "")
+        gid = ""
+        gid_match = re.search(r"gid[:\s=]+(\d+)", source_name)
+        if gid_match:
+            gid = gid_match.group(1)
+
         params = {
             "link": item.get("link", ""),
             "nama_usaha": item.get("nama_usaha", ""),
@@ -149,6 +156,7 @@ def _do_sync_request(url, item, status="SELESAI", operator=""):
             "iddesa": item.get("iddesa", ""),
             "status": status,
             "operator": operator,
+            "gid": gid,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
         }
         query_str = urllib.parse.urlencode(params)
@@ -162,7 +170,8 @@ def _do_sync_request(url, item, status="SELESAI", operator=""):
             try:
                 res_json = json.loads(resp_body)
                 if res_json.get("status") == "success":
-                    print(f"  -> [SYNC SHEET OK] Baris {res_json.get('row', item.get('row_num'))} ditandai '{status}' & diwarnai hijau di Google Sheet!")
+                    sheet_info = f"[{res_json.get('sheet')}] " if res_json.get("sheet") else ""
+                    print(f"  -> [SYNC SHEET OK] {sheet_info}Baris {res_json.get('row', item.get('row_num'))} ditandai '{status}' & diwarnai hijau!")
                 else:
                     msg = res_json.get('message', 'Update terkirim.')
                     print(f"  -> [SYNC SHEET Info] {msg}")
@@ -175,9 +184,19 @@ def sync_to_google_sheet(item, status="SELESAI", async_mode=True):
     """
     Sinkronisasi status dan pewarnaan hijau ke Google Spreadsheet target.
     Dijalankan secara asinkron (background thread) agar tidak memperlambat bot.
+    Mendukung multi-spreadsheet (memilih URL Web App sesuai spreadsheet target).
     """
     cfg = load_sync_config()
-    url = (cfg.get("gas_webapp_url") or "").strip()
+    source_name = item.get("source_name", "")
+    urls_map = cfg.get("gas_webapp_urls", {})
+    url = ""
+    for k, u in urls_map.items():
+        if u and (k.lower() in source_name.lower() or source_name.lower() in k.lower()):
+            url = u.strip()
+            break
+    if not url:
+        url = (cfg.get("gas_webapp_url") or "").strip()
+
     operator = (cfg.get("operator_name") or "").strip()
     if not url:
         return
@@ -1791,14 +1810,47 @@ def main():
 
     print(f"\nTotal data berhasil diambil dari Google Sheets: {len(raw_data)} baris.")
 
-    # 2. Cek Konfigurasi Sinkronisasi Google Sheets Live Web App
+    # 2. Cek Konfigurasi Sinkronisasi & Registrasi Operator
     sync_cfg = load_sync_config()
+    operator_name = (sync_cfg.get("operator_name") or "").strip()
+
+    if not operator_name:
+        print("\n" + "=" * 65)
+        print(" [REGISTRASI OPERATOR] (Hanya saat pertama kali bot dijalankan)")
+        print(" Masukkan nama Anda agar tercatat di kolom Status Google Sheets,")
+        print(" sehingga teman-teman Anda tahu siapa yang mengerjakan baris tsb.")
+        print("=" * 65)
+        while not operator_name:
+            operator_name = input("Masukkan Nama/Panggilan Anda (contoh: Muhshi): ").strip()
+        sync_cfg["operator_name"] = operator_name
+        save_sync_config(sync_cfg)
+        print(f"-> [OK] Nama operator disimpan sebagai: '{operator_name}'.")
+        print("   (Disimpan di 'sheet_sync_config.json', tidak akan ditanyakan lagi).")
+    else:
+        print(f"\n[Operator Aktif]: {operator_name}")
+
+    # Cek URL Sinkronisasi untuk sumber data yang dipilih
     gas_url = (sync_cfg.get("gas_webapp_url") or "").strip()
-    if gas_url:
-        masked_url = gas_url[:40] + "..." if len(gas_url) > 45 else gas_url
-        print(f"\n[LIVE SYNC SPREADSHEET: AKTIF]")
-        print(f" -> URL Web App: {masked_url}")
-        print(" -> Baris yang selesai akan otomatis ditandai 'SELESAI' dan diwarnai HIJAU di Google Sheet.")
+    urls_map = sync_cfg.get("gas_webapp_urls", {})
+    active_source_names = [s["name"] for s in chosen_sources]
+    matched_urls = []
+    for s_name in active_source_names:
+        u = ""
+        for k, v in urls_map.items():
+            if v and (k.lower() in s_name.lower() or s_name.lower() in k.lower()):
+                u = v.strip()
+                break
+        if not u and gas_url:
+            u = gas_url
+        if u:
+            matched_urls.append((s_name, u))
+
+    if matched_urls:
+        print(f"[LIVE SYNC SPREADSHEET: AKTIF]")
+        for s_n, u_val in matched_urls:
+            m_url = u_val[:38] + "..." if len(u_val) > 42 else u_val
+            print(f" -> '{s_n}': {m_url}")
+        print(f" -> Baris yang selesai otomatis ditandai 'SELESAI ({operator_name})' dan diwarnai HIJAU di Google Sheet.")
     else:
         print("\n[INFO SINKRONISASI LIVE]")
         print(" -> Google Apps Script Web App belum diisi (tetap menggunakan cache offline lokal).")
