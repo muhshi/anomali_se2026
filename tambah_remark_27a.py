@@ -1272,7 +1272,7 @@ def wait_for_submit_finish(page, max_wait=45):
     start_time = time.time()
     reported = False
 
-    time.sleep(1.0)
+    time.sleep(0.5)
 
     while time.time() - start_time < max_wait:
         try:
@@ -1339,26 +1339,26 @@ def wait_for_submit_finish(page, max_wait=45):
             if res.get("status") == "success":
                 elapsed = time.time() - start_time
                 print(f"     [OK] Pengiriman kuesioner berhasil terkonfirmasi dalam {elapsed:.1f} detik.")
-                time.sleep(1.0)
+                time.sleep(0.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
             if res.get("isSubmitting"):
                 if not reported:
                     print("  -> [Loading] Server sedang memproses pengiriman kuesioner, mohon tunggu...")
                     reported = True
-                time.sleep(1.0)
+                time.sleep(0.8)
                 continue
 
             # Jika sebelumnya loading dan sekarang sudah selesai
             if reported and not res.get("isSubmitting"):
                 elapsed = time.time() - start_time
                 print(f"     [OK] Pengiriman kuesioner ke server selesai dalam {elapsed:.1f} detik.")
-                time.sleep(1.0)
+                time.sleep(0.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
             # Jika dialog konfirmasi sudah tertutup dan tidak ada proses submit
             if res.get("dialogsCount") == 0 and not res.get("isSubmitting"):
-                time.sleep(1.0)
+                time.sleep(0.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
             time.sleep(0.8)
