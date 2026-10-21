@@ -36,18 +36,36 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
  ┣ 📜 run_edit_admin.bat       <-- Launcher khusus Bot Edit Anomali by Admin
  ┣ 📜 run_status_ditemukan.bat <-- Launcher khusus Bot Ubah Status Ditemukan
  ┣ 📜 run_ubah_kawasan.bat     <-- Launcher khusus Bot Ubah Jenis Kawasan ke Diluar Kawasan
+ ┣ 📜 run_tambah_remark.bat    <-- Launcher khusus Bot Tambah Remark 27.a Nilai Produksi
  ┣ 📜 edit_anomali_admin.py    <-- Script bot konfirmasi & perbaikan anomali by admin
  ┣ 📜 reject_anomali.py        <-- Script bot reject anomali
  ┣ 📜 ubah_status_ditemukan.py <-- Script bot ubah status '1. Ditemukan' & Submit Paksa
  ┣ 📜 ubah_jenis_kawasan.py    <-- Script bot ubah '8. d. Jenis kawasan' ke '10. Diluar kawasan'
+ ┣ 📜 tambah_remark_27a.py     <-- Script bot tambah remark #0 pada pertanyaan 27.a nilai produksi
  ┣ 📜 processed_edit_admin.json <-- Log cache bot edit by admin
  ┣ 📜 processed_links.json     <-- Log cache bot reject
  ┣ 📜 processed_status_ditemukan.json <-- Log cache bot ubah status
  ┣ 📜 processed_jenis_kawasan.json    <-- Log cache bot ubah kawasan
+ ┣ 📜 processed_tambah_remark.json    <-- Log cache bot tambah remark 27.a
  ┗ 📜 README.md
 ```
 
 ## 📝 Changelog
+
+### 2026-10-21
+- **Bot Baru: Tambah Remark 27.a Nilai Produksi (`tambah_remark_27a.py` & `run_tambah_remark.bat`)**:
+  - Mengambil data anomali live secara otomatis langsung dari Google Sheets (*Data detail anomali*) dengan default filter kolom `Petugas Cleaning = 0`.
+  - Dilengkapi menu interaktif di terminal untuk filter pengerjaan (Semua data, filter berdasarkan ID Desa, filter berdasarkan Batch, dsb).
+  - Alur otomatisasi:
+    1. Membuka link assignment Fasih-SM (`/edit`).
+    2. Masuk ke menu sidebar **SE2026 - L BLOK II: KETERANGAN USAHA/PERUSAHAAN**.
+    3. Mencocokkan nama usaha pada data sheet dengan submenu di sidebar maupun kartu usaha di form.
+    4. Mengklik tombol Catatan (speech bubble) pada pertanyaan **27. a. Nilai produksi/pendapatan/penjualan barang dan jasa**.
+    5. Mengisikan teks remark **`#0`**, menyimpan catatan, dan menutup popup.
+    6. Mengklik tombol simpan pada modal rincian jika ada.
+    7. Langsung lanjut ke assignment berikutnya secara mulus tanpa melakukan Kirim/Konfirmasi form.
+  - Dilengkapi cache resume (`processed_tambah_remark.json`), laporan rekap otomatis (`laporan_tambah_remark.xlsx`), penanganan sesi terputus/VPN disconnect dengan auto-pause & login ulang, serta pemulihan deteksi bot/WAF.
+  - Menambahkan menu pilihan **`[5] Bot Tambah Remark 27.a Nilai Produksi`** pada `run.bat` dan file launcher instan **`run_tambah_remark.bat`**.
 
 ### 2026-10-20
 - **Penanganan Otomatis Sesi Terputus / VPN Disconnect & Auto-Pause (`ubah_jenis_kawasan.py`)**:

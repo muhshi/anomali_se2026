@@ -148,9 +148,10 @@ echo [1] Bot Reject Anomali (reject_anomali.py)
 echo [2] Bot Edit Anomali by Admin (edit_anomali_admin.py) [DEFAULT]
 echo [3] Bot Ubah Status Ditemukan ^& Submit Paksa (ubah_status_ditemukan.py)
 echo [4] Bot Ubah Jenis Kawasan ke Diluar Kawasan (ubah_jenis_kawasan.py)
+echo [5] Bot Tambah Remark 27.a Nilai Produksi (tambah_remark_27a.py)
 echo ====================================================
-set "BOT_CHOICE=2"
-set /p BOT_CHOICE="Pilih nomor [1/2/3/4] (Default: 2): "
+set "BOT_CHOICE=5"
+set /p BOT_CHOICE="Pilih nomor [1/2/3/4/5] (Default: 5): "
 
 if "%BOT_CHOICE%"=="1" (
     echo.
@@ -164,6 +165,10 @@ if "%BOT_CHOICE%"=="1" (
     echo.
     echo Menjalankan Bot Ubah Jenis Kawasan ke Diluar Kawasan...
     python ubah_jenis_kawasan.py
+) else if "%BOT_CHOICE%"=="5" (
+    echo.
+    echo Menjalankan Bot Tambah Remark 27.a Nilai Produksi...
+    python tambah_remark_27a.py
 ) else (
     echo.
     echo Menjalankan Bot Edit Anomali by Admin...
