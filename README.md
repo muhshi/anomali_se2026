@@ -53,6 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Deteksi Loading Dinamis & Penanganan Website Lemot (`tambah_remark_27a.py`)**:
+  - Menambahkan fungsi `wait_for_loading_finish` yang secara otomatis mendeteksi animasi spinner (`animate-spin`), skeleton, shimmer, teks *'Memuat...' / 'Loading...'*, maupun overlay backdrop.
+  - Bot secara adaptif menunggu hingga proses pengambilan data dari server Fasih-SM selesai sepenuhnya sebelum mencoba berinteraksi dengan menu, kartu usaha, atau pertanyaan formulir.
+  - Mengatasi kendala koneksi/server lemot di mana rincian pertanyaan 27.a sebelumnya belum selesai ter-render saat bot melakukan pemindaian.
+  - Menambahkan sistem *two-pass scanning* (hingga 35 langkah scroll dan pemindaian ulang dari atas) untuk memastikan pertanyaan 27.a yang dimuat secara asinkron/lazy-load dapat ditemukan dengan sempurna.
 - **Perbaikan Scoping Tombol Catatan & Navigasi Pertanyaan 27.a (`tambah_remark_27a.py`)**:
   - Memperbaiki bug di mana bot sebelumnya mengklik tombol Catatan pada Pertanyaan 8 (seperti 8.d Jenis Kawasan) karena scoping selector container luas yang salah mencocokkan tombol pertama.
   - Menambahkan scanning scroll aktif bertahap (hingga 24 langkah) untuk memastikan form/modal rincian digulir sampai Pertanyaan **27. a. Nilai produksi/pendapatan/penjualan barang dan jasa** benar-benar termuat dan berada di tengah layar.

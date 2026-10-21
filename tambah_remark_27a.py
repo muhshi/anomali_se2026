@@ -393,6 +393,95 @@ def resolve_bot_detection(page, target_link):
     return True
 
 # ==============================================================================
+# DETEKSI DAN PENUNGGUAN LOADING DINAMIS FASIH-SM
+# ==============================================================================
+
+def wait_for_loading_finish(page, max_wait=60, context=""):
+    """
+    Mendeteksi secara dinamis apakah website Fasih-SM sedang dalam proses loading:
+    1. Animasi spinner (animate-spin, spinner, loader, progressbar, aria-busy).
+    2. Skeleton / shimmer placeholder yang sedang me-render UI.
+    3. Teks loading terlihat ('Memuat...', 'Loading...', 'Sedang memuat...', 'Mohon tunggu...').
+    4. Backdrop / overlay semi-transparan dengan spinner di atas form.
+    Menunggu sampai seluruh indikator loading tersebut hilang dan form stabil.
+    """
+    start_time = time.time()
+    reported = False
+
+    # Jeda awal agar browser sempat memicu state loading jika baru saja mengklik tombol
+    time.sleep(0.8)
+
+    while time.time() - start_time < max_wait:
+        try:
+            res = page.evaluate('''() => {
+                function isVisible(el) {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && 
+                           style.visibility !== 'hidden' && 
+                           style.opacity !== '0' && 
+                           el.offsetWidth > 0 && 
+                           el.offsetHeight > 0;
+                }
+
+                // 1. Cek elemen spinner & animasi loading
+                const spinners = Array.from(document.querySelectorAll(
+                    '.animate-spin, [class*="animate-spin"], [class*="spinner"], [class*="loader"], [role="progressbar"], [aria-busy="true"], [class*="skeleton"], [class*="shimmer"], [data-loading="true"], [data-state="loading"]'
+                )).filter(isVisible);
+
+                // 2. Cek teks loading yang terlihat
+                const allTexts = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4'));
+                const loadingTexts = allTexts.filter(el => {
+                    if (!isVisible(el)) return false;
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return (
+                        t === 'memuat...' || 
+                        t === 'loading...' || 
+                        t === 'sedang memuat...' || 
+                        t === 'sedang memuat' || 
+                        t === 'mengambil data...' || 
+                        t === 'mengambil data' || 
+                        t === 'mohon tunggu...' || 
+                        t === 'menyiapkan formulir...' ||
+                        t.includes('sedang memuat data')
+                    ) && el.children.length === 0;
+                });
+
+                // 3. Cek overlay / backdrop loading
+                const overlays = Array.from(document.querySelectorAll('.fixed.inset-0, .absolute.inset-0, [class*="backdrop"], [class*="overlay"]')).filter(el => {
+                    if (!isVisible(el)) return false;
+                    const t = (el.innerText || el.textContent || '').toLowerCase();
+                    const hasSpin = el.querySelector('.animate-spin, svg, [class*="spinner"]');
+                    return hasSpin !== null || t.includes('memuat') || t.includes('loading') || t.includes('tunggu');
+                });
+
+                const isLoading = spinners.length > 0 || loadingTexts.length > 0 || overlays.length > 0;
+                return {
+                    isLoading: isLoading,
+                    detail: spinners.length > 0 ? 'animasi spinner/skeleton' : (loadingTexts.length > 0 ? 'teks memuat' : (overlays.length > 0 ? 'overlay backdrop' : 'selesai'))
+                };
+            }''')
+
+            if not res or not res.get("isLoading"):
+                if reported:
+                    elapsed = time.time() - start_time
+                    print(f"     [OK] Loading selesai ({context}) dalam {elapsed:.1f} detik.")
+                    time.sleep(1.5)  # Jeda stabilisasi render
+                return True
+
+            if not reported:
+                print(f"  -> [Loading] Terdeteksi website sedang memuat ({context} - {res.get('detail')}), mohon tunggu...")
+                reported = True
+
+            time.sleep(1.0)
+        except Exception:
+            time.sleep(1.0)
+
+    if reported:
+        print(f"     [Warning] Waktu tunggu loading ({context}) telah mencapai batas {max_wait} detik, mencoba melanjutkan...")
+    return False
+
+# ==============================================================================
 # NAVIGASI BLOK II & PILIH USAHA
 # ==============================================================================
 
@@ -401,6 +490,7 @@ def open_menu_blok_ii(page):
     Membuka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN) di sidebar.
     """
     time.sleep(1.0)
+    wait_for_loading_finish(page, max_wait=30, context="Pemuatan Awal Halaman")
     
     # Cek apakah halaman sudah berada di BLOK II
     is_blok_ii_open = page.evaluate('''() => {
@@ -421,6 +511,7 @@ def open_menu_blok_ii(page):
                 tab_locator.scroll_into_view_if_needed(timeout=2000)
                 tab_locator.click(timeout=3000, force=True)
                 print("     [OK] Menu 'BLOK II' diklik via Playwright locator.")
+                wait_for_loading_finish(page, max_wait=30, context="Buka Menu BLOK II")
                 time.sleep(1.5)
                 return True
         except Exception:
@@ -482,10 +573,12 @@ def open_menu_blok_ii(page):
 
         if res and res.get("success"):
             print(f"     [OK] Berhasil membuka menu: '{res.get('menu')}'")
+            wait_for_loading_finish(page, max_wait=30, context="Buka Menu BLOK II")
             time.sleep(1.5)
             return True
         elif res and res.get("need_wait"):
             print(f"     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu ('{res.get('menu')}')...")
+            wait_for_loading_finish(page, max_wait=20, context="Ekspansi SE2026 - L")
             time.sleep(1.5)
             continue
         else:
@@ -496,10 +589,14 @@ def open_menu_blok_ii(page):
 def select_or_open_usaha(page, target_nama_usaha):
     """
     Mencari kartu usaha / baris tabel yang cocok dengan nama usaha lalu mengklik tombol 'Lihat Rincian'.
+    Menunggu sampai loading form rincian selesai sepenuhnya.
     """
     time.sleep(1.0)
     clean_target = (target_nama_usaha or "").strip()
     print(f"  -> Mencari dan membuka rincian usaha: '{clean_target}' (Lihat Rincian)...")
+
+    # Pastikan data kartu usaha selesai dimuat dari API
+    wait_for_loading_finish(page, max_wait=35, context="Memuat Daftar Kartu Usaha")
 
     # Cek jika modal / form rincian sudah terbuka
     is_open = page.evaluate('''() => {
@@ -513,6 +610,7 @@ def select_or_open_usaha(page, target_nama_usaha):
         return True
 
     # 1. Cari kartu/baris usaha yang cocok dengan nama usaha lalu klik 'Lihat Rincian'
+    btn_clicked = False
     if clean_target:
         res_card = page.evaluate('''(namaUsaha) => {
             function getCleanText(el) {
@@ -577,22 +675,36 @@ def select_or_open_usaha(page, target_nama_usaha):
 
         if res_card and res_card.get("success"):
             print(f"     [OK] Tombol/Menu usaha '{clean_target}' berhasil diklik: '{res_card.get('text')}' ({res_card.get('method')})")
-            time.sleep(2.5)
-            return True
+            btn_clicked = True
 
     # 2. Fallback: Cari tombol 'Lihat Rincian' umum di halaman jika hanya 1 usaha
-    try:
-        global_btn = page.locator("button, a, [role='button']").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
-        if global_btn.count() > 0 and global_btn.is_visible():
-            global_btn.scroll_into_view_if_needed(timeout=2000)
-            global_btn.click(timeout=3000, force=True)
-            print("     [OK] Tombol 'Lihat Rincian' berhasil diklik via global locator.")
-            time.sleep(2.5)
-            return True
-    except Exception:
-        pass
+    if not btn_clicked:
+        try:
+            global_btn = page.locator("button, a, [role='button']").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
+            if global_btn.count() > 0 and global_btn.is_visible():
+                global_btn.scroll_into_view_if_needed(timeout=2000)
+                global_btn.click(timeout=3000, force=True)
+                print("     [OK] Tombol 'Lihat Rincian' berhasil diklik via global locator.")
+                btn_clicked = True
+        except Exception:
+            pass
 
-    print("     [Info] Form rincian diasumsikan sudah terbuka langsung atau dalam tampilan tunggal.")
+    # Tunggu loading rincian usaha selesai dari server
+    wait_for_loading_finish(page, max_wait=45, context="Membuka Modal Form Rincian")
+
+    # Pastikan form / modal benar-benar ter-mount sebelum melanjutkan
+    for _ in range(15):
+        form_ready = page.evaluate('''() => {
+            const dialog = document.querySelector('div[role="dialog"]');
+            if (dialog && dialog.offsetParent !== null) return true;
+            const bodyText = (document.body.innerText || '').toLowerCase();
+            return bodyText.includes('keterangan tempat') || bodyText.includes('nilai produksi') || bodyText.includes('rincian');
+        }''')
+        if form_ready:
+            break
+        time.sleep(1.0)
+
+    time.sleep(1.5)
     return True
 
 # ==============================================================================
@@ -603,18 +715,22 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     """
     Menambahkan catatan / remark '#0' pada pertanyaan:
     '27. a. Nilai produksi/pendapatan/penjualan barang dan jasa':
-    1. Melakukan scanning scroll bertahap ke bawah pada modal/form rincian sampai pertanyaan 27.a ditemukan.
-    2. Memverifikasi dengan ketat label pertanyaan 27.a (BUKAN pertanyaan 8!).
-    3. Mengklik tombol Catatan (speech bubble) khusus untuk pertanyaan 27.a:
+    1. Menunggu loading form rincian selesai sepenuhnya (mengatasi website lemot).
+    2. Melakukan scanning scroll bertahap ke bawah pada modal/form rincian sampai pertanyaan 27.a ditemukan.
+    3. Memverifikasi dengan ketat label pertanyaan 27.a (BUKAN pertanyaan 8!).
+    4. Mengklik tombol Catatan (speech bubble) khusus untuk pertanyaan 27.a:
        <button title="Catatan" aria-label="Catatan">
-    4. Mengisikan teks remark ('#0') ke dalam input / textarea popup.
-    5. Mengklik tombol Simpan (icon paper plane atau title='Simpan').
-    6. Memverifikasi bahwa catatan '#0' tersimpan.
-    7. Menutup popup catatan.
-    8. Mengklik Simpan di form rincian jika ada.
+    5. Mengisikan teks remark ('#0') ke dalam input / textarea popup.
+    6. Mengklik tombol Simpan (icon paper plane atau title='Simpan').
+    7. Memverifikasi bahwa catatan '#0' tersimpan.
+    8. Menutup popup catatan.
+    9. Mengklik Simpan di form rincian jika ada.
     """
     print(f"  -> Mencari pertanyaan '27. a' dan mengklik tombol Catatan...")
     time.sleep(1.0)
+
+    # Pastikan form rincian sudah tidak loading
+    wait_for_loading_finish(page, max_wait=40, context="Persiapan Formulir Pertanyaan 27.a")
 
     # ==========================================================================
     # TAHAP 1: SCANNING SCROLL KE BAWAH SAMPAI PERTANYAAN 27.a DITEMUKAN
@@ -622,66 +738,88 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     found_27a = False
     q_text_found = ""
 
-    for scan_step in range(1, 25):
-        # Cek apakah elemen 27.a sudah termuat di DOM
-        res_search = page.evaluate('''() => {
-            function getCleanText(el) {
-                return (el.innerText || el.textContent || '').trim();
-            }
-
-            const all = Array.from(document.querySelectorAll('*'));
+    # Lakukan hingga 2 putaran scan (jika putaran 1 belum selesai loading komponen bawah)
+    for pass_num in range(1, 3):
+        if found_27a:
+            break
             
-            // Regex ketat untuk pertanyaan 27.a
-            // Harus memuat 27.a atau 27. a atau (27 dan nilai produksi)
-            const matchedLeafs = all.filter(el => {
-                const t = getCleanText(el);
-                if (!t || t.length > 200) return false;
-                
-                const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || 
-                              (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
-                if (!is27a) return false;
+        if pass_num > 1:
+            print(f"  -> [Putaran {pass_num}] Menggulir kembali ke atas dan memindai ulang formulir...")
+            page.evaluate('''() => {
+                window.scrollTo(0, 0);
+                const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+                    const s = window.getComputedStyle(el);
+                    return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+                });
+                scrollables.forEach(s => s.scrollTop = 0);
+            }''')
+            time.sleep(1.5)
+            wait_for_loading_finish(page, max_wait=20, context="Reset Scroll Form")
 
-                // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8 atau lainnya)
-                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) {
-                    return false;
+        for scan_step in range(1, 36):
+            # Cek apakah elemen 27.a sudah termuat di DOM
+            res_search = page.evaluate('''() => {
+                function getCleanText(el) {
+                    return (el.innerText || el.textContent || '').trim();
                 }
 
-                // Harus elemen leaf terdalam yang memuat teks tersebut
-                const childHasMatch = Array.from(el.children).some(c => {
-                    const ct = getCleanText(c);
-                    return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
+                const all = Array.from(document.querySelectorAll('*'));
+                
+                // Regex ketat untuk pertanyaan 27.a
+                // Harus memuat 27.a atau 27. a atau (27 dan nilai produksi)
+                const matchedLeafs = all.filter(el => {
+                    const t = getCleanText(el);
+                    if (!t || t.length > 200) return false;
+                    
+                    const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || 
+                                  (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
+                    if (!is27a) return false;
+
+                    // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8 atau lainnya)
+                    if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) {
+                        return false;
+                    }
+
+                    // Harus elemen leaf terdalam yang memuat teks tersebut
+                    const childHasMatch = Array.from(el.children).some(c => {
+                        const ct = getCleanText(c);
+                        return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
+                    });
+                    return !childHasMatch;
                 });
-                return !childHasMatch;
-            });
 
-            if (matchedLeafs.length > 0) {
-                const target = matchedLeafs[0];
-                target.scrollIntoView({ behavior: 'instant', block: 'center' });
-                return { found: true, text: getCleanText(target) };
-            }
+                if (matchedLeafs.length > 0) {
+                    const target = matchedLeafs[0];
+                    target.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    return { found: true, text: getCleanText(target) };
+                }
 
-            return { found: false };
-        }''')
+                return { found: false };
+            }''')
 
-        if res_search and res_search.get("found"):
-            found_27a = True
-            q_text_found = res_search.get("text", "")
-            print(f"     [OK] Pertanyaan 27.a ditemukan pada scan step {scan_step}: '{q_text_found}'")
-            time.sleep(1.0)
-            break
+            if res_search and res_search.get("found"):
+                found_27a = True
+                q_text_found = res_search.get("text", "")
+                print(f"     [OK] Pertanyaan 27.a ditemukan (Langkah {scan_step}): '{q_text_found}'")
+                time.sleep(1.0)
+                break
 
-        # Scroll ke bawah baik window maupun kontainer modal rincian
-        page.evaluate('''() => {
-            window.scrollBy(0, 1000);
-            const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
-                const s = window.getComputedStyle(el);
-                return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
-            });
-            scrollables.forEach(s => {
-                s.scrollTop += 1000;
-            });
-        }''')
-        time.sleep(0.3)
+            # Jika website sedang loading lazy component saat scrolling, tunggu
+            if scan_step % 6 == 0:
+                wait_for_loading_finish(page, max_wait=15, context=f"Pemuatan Komponen Langkah {scan_step}")
+
+            # Scroll ke bawah baik window maupun kontainer modal rincian
+            page.evaluate('''() => {
+                window.scrollBy(0, 800);
+                const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
+                    const s = window.getComputedStyle(el);
+                    return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+                });
+                scrollables.forEach(s => {
+                    s.scrollTop += 800;
+                });
+            }''')
+            time.sleep(0.4)
 
     if not found_27a:
         print("     [GAGAL] Pertanyaan 27.a Nilai Produksi tidak dapat ditemukan di halaman ini!")
@@ -694,7 +832,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     print(f"  -> Mengklik tombol Catatan pada baris 27.a...")
     btn_opened = False
 
-    for attempt in range(3):
+    for attempt in range(4):
         res_click = page.evaluate('''() => {
             function getCleanText(el) {
                 return (el.innerText || el.textContent || '').trim();
@@ -934,7 +1072,9 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
         except Exception:
             pass
 
-    time.sleep(1.5)
+    # Tunggu request simpan catatan selesai dikirim ke server Fasih-SM
+    wait_for_loading_finish(page, max_wait=30, context="Penyimpanan Catatan 27.a")
+    time.sleep(1.0)
 
     # ==========================================================================
     # TAHAP 5: VERIFIKASI CATATAN TERTERA & MENUTUP DIALOG CATATAN
@@ -987,7 +1127,8 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
         }''')
         if res_modal_save and res_modal_save.get("success"):
             print(f"     [OK] Tombol simpan rincian '{res_modal_save.get('text')}' diklik.")
-            time.sleep(2.0)
+            wait_for_loading_finish(page, max_wait=30, context="Penyimpanan Rincian Usaha")
+            time.sleep(1.5)
     except Exception:
         pass
 
@@ -1306,6 +1447,7 @@ def process_single_assignment(page, item):
         return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
 
     time.sleep(1.0)
+    wait_for_loading_finish(page, max_wait=45, context="Halaman Assignment /edit")
 
     # 1. Buka menu SE2026 - L BLOK II
     print("  -> Membuka menu 'SE2026 - L BLOK II: KETERANGAN USAHA/PERUSAHAAN'...")
