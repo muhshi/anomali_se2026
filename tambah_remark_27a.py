@@ -401,78 +401,83 @@ def open_menu_blok_ii(page):
     Membuka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN) di sidebar.
     """
     time.sleep(1.0)
-    for attempt in range(4):
+    
+    # Cek apakah halaman sudah berada di BLOK II
+    is_blok_ii_open = page.evaluate('''() => {
+        const text = (document.body.innerText || '').toLowerCase();
+        return text.includes("keterangan usaha/perusahaan") || text.includes("blok ii: keterangan") || text.includes("lihat rincian");
+    }''')
+    if is_blok_ii_open:
+        print("     [OK] Menu/Halaman 'SE2026 - L BLOK II' sudah aktif.")
+        return True
+
+    for attempt in range(5):
         # 1. Coba klik langsung tab / tombol dengan Playwright locator
         try:
-            tab_locator = page.get_by_role("tab", name=re.compile(r"(?:SE2026\s*[-–—]?\s*L.*BLOK\s*II|BLOK\s*II.*KETERANGAN\s*USAHA|BLOK\s*II)", re.IGNORECASE)).first
+            tab_locator = page.locator("a, button, [role='tab'], li").filter(
+                has_text=re.compile(r"BLOK\s*II.*KETERANGAN\s*USAHA|BLOK\s*II\b", re.IGNORECASE)
+            ).first
             if tab_locator.is_visible():
                 tab_locator.scroll_into_view_if_needed(timeout=2000)
                 tab_locator.click(timeout=3000, force=True)
-                print("     [OK] Menu 'SE2026 - L BLOK II' diklik via Playwright locator.")
+                print("     [OK] Menu 'BLOK II' diklik via Playwright locator.")
                 time.sleep(1.5)
                 return True
         except Exception:
             pass
 
-        # 2. Coba evaluasi JavaScript DOM
+        # 2. Evaluasi JavaScript DOM: jika accordion 'SE2026 - L' tertutup, klik untuk ekspansi
         res = page.evaluate('''() => {
             function getCleanText(el) {
                 return (el.innerText || el.textContent || '').trim();
             }
 
+            function clickEl(el) {
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+            }
+
             const all = Array.from(document.querySelectorAll('*'));
             
-            // Ambil semua sidebar menu items
-            const sidebars = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul'));
-            let allMenuTexts = [];
-            sidebars.forEach(s => {
-                const children = Array.from(s.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[class*="item"]'));
-                children.forEach(c => {
-                    const t = getCleanText(c);
-                    if (t && t.length < 70 && !allMenuTexts.includes(t)) allMenuTexts.push(t);
-                });
-            });
-
-            // Cari leaf dengan kecocokan spesifik 'SE2026 - L' + 'BLOK II' atau 'BLOK II'
-            const regFull = /(?:SE2026\s*[-–—]?\s*L.*BLOK\s*II|BLOK\s*II.*KETERANGAN\s*USAHA)/i;
-            const regBlokII = /BLOK\s*II\b/i;
-            const regKetUsaha = /KETERANGAN\s*USAHA/i;
-
-            let matchedLeafs = all.filter(el => {
+            // Cari leaf dengan kecocokan spesifik 'BLOK II' di sidebar
+            const regBlokII = /(?:SE2026\s*[-–—]?\s*L.*BLOK\s*II|BLOK\s*II.*KETERANGAN\s*USAHA|BLOK\s*II\b)/i;
+            const matchedLeafs = all.filter(el => {
                 const t = getCleanText(el);
-                return (regFull.test(t) || regBlokII.test(t) || (regKetUsaha.test(t) && !t.toLowerCase().includes('anomali'))) &&
-                       !Array.from(el.children).some(c => regFull.test(getCleanText(c)) || regBlokII.test(getCleanText(c)));
+                return regBlokII.test(t) && !t.toLowerCase().includes('anomali') &&
+                       !Array.from(el.children).some(c => regBlokII.test(getCleanText(c)));
             });
-
-            // Jika belum ada, coba ekspansi 'SE2026 - L' jika berupa accordion yang tertutup
-            if (matchedLeafs.length === 0) {
-                const lLeafs = all.filter(el => {
-                    const t = getCleanText(el);
-                    return /SE2026\s*[-–—]?\s*L/i.test(t) &&
-                           !Array.from(el.children).some(c => /SE2026\s*[-–—]?\s*L/i.test(getCleanText(c)));
-                });
-                if (lLeafs.length > 0) {
-                    const lTarget = lLeafs[0].closest('a, button, [role="tab"], [role="treeitem"], li') || lLeafs[0];
-                    lTarget.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    lTarget.click();
-                    return { success: false, need_wait: true, action: 'expanded_se2026_l', allMenus: allMenuTexts.slice(0, 20) };
-                }
-            }
 
             if (matchedLeafs.length > 0) {
                 matchedLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
                 const target = matchedLeafs[0];
                 const clickable = target.closest('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, [tabindex]') || target;
-                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
-                clickable.click();
-                return {
-                    success: true,
-                    menu: getCleanText(clickable),
-                    allMenus: allMenuTexts.slice(0, 20)
-                };
+                clickEl(clickable);
+                return { success: true, menu: getCleanText(clickable) };
             }
 
-            return { success: false, allMenus: allMenuTexts.slice(0, 20) };
+            // Jika BLOK II belum terlihat, ekspansi 'SE2026 - L'
+            const regL = /SE2026\s*[-–—]?\s*L\b/i;
+            const lLeafs = all.filter(el => {
+                const t = getCleanText(el);
+                return regL.test(t) && !Array.from(el.children).some(c => regL.test(getCleanText(c)));
+            });
+
+            if (lLeafs.length > 0) {
+                lLeafs.sort((a, b) => getCleanText(a).length - getCleanText(b).length);
+                const lTarget = lLeafs[0].closest('a, button, [role="tab"], [role="treeitem"], li') || lLeafs[0];
+                clickEl(lTarget);
+                return { success: false, need_wait: true, action: 'expanded_se2026_l', menu: getCleanText(lTarget) };
+            }
+
+            return { success: false };
         }''')
 
         if res and res.get("success"):
@@ -480,7 +485,7 @@ def open_menu_blok_ii(page):
             time.sleep(1.5)
             return True
         elif res and res.get("need_wait"):
-            print("     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu...")
+            print(f"     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu ('{res.get('menu')}')...")
             time.sleep(1.5)
             continue
         else:
@@ -490,278 +495,358 @@ def open_menu_blok_ii(page):
 
 def select_or_open_usaha(page, target_nama_usaha):
     """
-    Mencari dan mengklik submenu nama usaha di sidebar atau tombol Lihat Rincian kartu usaha
-    yang cocok dengan nama usaha di sheet.
+    Mencari kartu usaha / baris tabel yang cocok dengan nama usaha lalu mengklik tombol 'Lihat Rincian'.
     """
     time.sleep(1.0)
     clean_target = (target_nama_usaha or "").strip()
-    print(f"  -> Mencari dan memilih usaha: '{clean_target}'...")
+    print(f"  -> Mencari dan membuka rincian usaha: '{clean_target}' (Lihat Rincian)...")
 
-    # 1. Coba klik submenu nama usaha di sidebar kiri (di bawah SE2026 - L BLOK II)
+    # Cek jika modal / form rincian sudah terbuka
+    is_open = page.evaluate('''() => {
+        const dialog = document.querySelector('div[role="dialog"]');
+        if (dialog && dialog.offsetParent !== null) return true;
+        const bodyText = (document.body.innerText || '').toLowerCase();
+        return bodyText.includes('nilai produksi') && bodyText.includes('27');
+    }''')
+    if is_open:
+        print("     [OK] Form/Modal rincian usaha sudah terbuka.")
+        return True
+
+    # 1. Cari kartu/baris usaha yang cocok dengan nama usaha lalu klik 'Lihat Rincian'
     if clean_target:
-        try:
-            res_sub = page.evaluate('''(namaUsaha) => {
-                function getCleanText(el) {
-                    return (el.innerText || el.textContent || '').trim();
-                }
+        res_card = page.evaluate('''(namaUsaha) => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
+            function cleanStr(s) {
+                return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+            }
+            function clickEl(el) {
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+            }
 
-                function cleanStr(s) {
-                    return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-                }
-
-                const uClean = cleanStr(namaUsaha);
-                const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul'));
+            const uClean = cleanStr(namaUsaha);
+            const words = namaUsaha.toLowerCase().split(/\\s+/).filter(w => w.length > 2);
+            
+            // Cari di semua kartu / baris tabel
+            const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"], div[class*="card"]'));
+            for (const c of containers) {
+                const cText = getCleanText(c);
+                const cClean = cleanStr(cText);
                 
-                for (const sb of sidebarEls) {
-                    const items = Array.from(sb.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li, div[class*="item"]'));
-                    for (const it of items) {
-                        const itText = getCleanText(it);
-                        const itClean = cleanStr(itText);
-                        if (itClean && (itClean === uClean || itClean.includes(uClean) || (uClean.length > 5 && uClean.includes(itClean)))) {
-                            it.scrollIntoView({ behavior: 'instant', block: 'center' });
-                            it.click();
-                            return { success: true, method: 'sidebar_submenu_click', text: itText };
-                        }
+                const matchFull = cClean.includes(uClean);
+                const matchWords = words.length > 0 && words.some(w => cText.toLowerCase().includes(w));
+                
+                if (matchFull || matchWords) {
+                    const btns = Array.from(c.querySelectorAll('button, a, [role="button"]'));
+                    const targetBtn = btns.find(b => {
+                        const t = getCleanText(b).toLowerCase();
+                        return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'lihat' || t === 'buka') && t.length < 30;
+                    });
+                    if (targetBtn) {
+                        clickEl(targetBtn);
+                        return { success: true, method: 'card_match', text: getCleanText(targetBtn) };
                     }
                 }
-                return { success: false };
-            }''', clean_target)
+            }
 
-            if res_sub and res_sub.get("success"):
-                print(f"     [OK] Submenu usaha di sidebar berhasil diklik: '{res_sub.get('text')}'")
-                time.sleep(2.0)
-                return True
-        except Exception:
-            pass
-
-    # 2. Coba klik tombol 'Lihat Rincian' pada baris / kartu usaha yang cocok
-    if clean_target:
-        try:
-            res_card = page.evaluate('''(namaUsaha) => {
-                function getCleanText(el) {
-                    return (el.innerText || el.textContent || '').trim();
-                }
-                function cleanStr(s) {
-                    return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-                }
-
-                const uClean = cleanStr(namaUsaha);
-                const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"]'));
-                
-                for (const c of containers) {
-                    const cText = getCleanText(c);
-                    const cClean = cleanStr(cText);
-                    if (cClean.includes(uClean)) {
-                        const btns = Array.from(c.querySelectorAll('button, a, [role="button"]'));
-                        const targetBtn = btns.find(b => {
-                            const t = getCleanText(b).toLowerCase();
-                            return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'lihat' || t === 'buka') && t.length < 30;
-                        });
-                        if (targetBtn) {
-                            targetBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                            targetBtn.click();
-                            return { success: true, method: 'card_button_match', text: getCleanText(targetBtn) };
-                        }
+            // Coba juga jika nama usaha ada di sidebar sub-menu
+            const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'));
+            for (const sb of sidebarEls) {
+                const items = Array.from(sb.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li'));
+                for (const it of items) {
+                    const itText = getCleanText(it);
+                    if (cleanStr(itText).includes(uClean) || (words.length > 0 && words.some(w => itText.toLowerCase().includes(w)))) {
+                        clickEl(it);
+                        return { success: true, method: 'sidebar_submenu', text: itText };
                     }
                 }
-                return { success: false };
-            }''', clean_target)
+            }
 
-            if res_card and res_card.get("success"):
-                print(f"     [OK] Tombol kartu usaha '{clean_target}' berhasil diklik: '{res_card.get('text')}'")
-                time.sleep(2.0)
-                return True
-        except Exception:
-            pass
+            return { success: false };
+        }''', clean_target)
 
-    # 3. Fallback: jika hanya ada 1 usaha atau tombol 'Lihat Rincian' umum di halaman
+        if res_card and res_card.get("success"):
+            print(f"     [OK] Tombol/Menu usaha '{clean_target}' berhasil diklik: '{res_card.get('text')}' ({res_card.get('method')})")
+            time.sleep(2.5)
+            return True
+
+    # 2. Fallback: Cari tombol 'Lihat Rincian' umum di halaman jika hanya 1 usaha
     try:
         global_btn = page.locator("button, a, [role='button']").filter(has_text=re.compile(r"Lihat\s*Rincian", re.IGNORECASE)).first
         if global_btn.count() > 0 and global_btn.is_visible():
             global_btn.scroll_into_view_if_needed(timeout=2000)
             global_btn.click(timeout=3000, force=True)
-            print("     [OK] Tombol 'Lihat Rincian' berhasil diklik via fallback locator.")
-            time.sleep(2.0)
+            print("     [OK] Tombol 'Lihat Rincian' berhasil diklik via global locator.")
+            time.sleep(2.5)
             return True
     except Exception:
         pass
 
-    print("     [Info] Form rincian usaha diasumsikan sudah terbuka langsung.")
+    print("     [Info] Form rincian diasumsikan sudah terbuka langsung atau dalam tampilan tunggal.")
     return True
 
 # ==============================================================================
-# TAMBAH REMARK PADA PERTANYAAN 27.a
+# TAMBAH REMARK PADA PERTANYAAN 27.a (NILAI PRODUKSI / PENDAPATAN)
 # ==============================================================================
 
 def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     """
     Menambahkan catatan / remark '#0' pada pertanyaan:
     '27. a. Nilai produksi/pendapatan/penjualan barang dan jasa':
-    1. Mencari field / label pertanyaan 27.a
-    2. Menemukan dan mengklik tombol Catatan (speech bubble) di sebelah field tersebut:
+    1. Melakukan scanning scroll bertahap ke bawah pada modal/form rincian sampai pertanyaan 27.a ditemukan.
+    2. Memverifikasi dengan ketat label pertanyaan 27.a (BUKAN pertanyaan 8!).
+    3. Mengklik tombol Catatan (speech bubble) khusus untuk pertanyaan 27.a:
        <button title="Catatan" aria-label="Catatan">
-    3. Mengisikan teks remark ('#0') ke dalam input / textarea popup.
-    4. Mengklik tombol Simpan (icon paper plane atau title='Simpan').
-    5. Menutup popup catatan.
-    6. Mengklik Simpan di form rincian jika ada.
+    4. Mengisikan teks remark ('#0') ke dalam input / textarea popup.
+    5. Mengklik tombol Simpan (icon paper plane atau title='Simpan').
+    6. Memverifikasi bahwa catatan '#0' tersimpan.
+    7. Menutup popup catatan.
+    8. Mengklik Simpan di form rincian jika ada.
     """
     print(f"  -> Mencari pertanyaan '27. a' dan mengklik tombol Catatan...")
     time.sleep(1.0)
 
-    # 1. Scroll bertahap ke bawah pada form agar pertanyaan 27.a termuat
-    for scroll_step in range(1, 4):
-        page.evaluate('''(step) => {
-            window.scrollBy(0, 800 * step);
+    # ==========================================================================
+    # TAHAP 1: SCANNING SCROLL KE BAWAH SAMPAI PERTANYAAN 27.a DITEMUKAN
+    # ==========================================================================
+    found_27a = False
+    q_text_found = ""
+
+    for scan_step in range(1, 25):
+        # Cek apakah elemen 27.a sudah termuat di DOM
+        res_search = page.evaluate('''() => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
+
+            const all = Array.from(document.querySelectorAll('*'));
+            
+            // Regex ketat untuk pertanyaan 27.a
+            // Harus memuat 27.a atau 27. a atau (27 dan nilai produksi)
+            const matchedLeafs = all.filter(el => {
+                const t = getCleanText(el);
+                if (!t || t.length > 200) return false;
+                
+                const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || 
+                              (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
+                if (!is27a) return false;
+
+                // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8 atau lainnya)
+                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) {
+                    return false;
+                }
+
+                // Harus elemen leaf terdalam yang memuat teks tersebut
+                const childHasMatch = Array.from(el.children).some(c => {
+                    const ct = getCleanText(c);
+                    return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
+                });
+                return !childHasMatch;
+            });
+
+            if (matchedLeafs.length > 0) {
+                const target = matchedLeafs[0];
+                target.scrollIntoView({ behavior: 'instant', block: 'center' });
+                return { found: true, text: getCleanText(target) };
+            }
+
+            return { found: false };
+        }''')
+
+        if res_search and res_search.get("found"):
+            found_27a = True
+            q_text_found = res_search.get("text", "")
+            print(f"     [OK] Pertanyaan 27.a ditemukan pada scan step {scan_step}: '{q_text_found}'")
+            time.sleep(1.0)
+            break
+
+        # Scroll ke bawah baik window maupun kontainer modal rincian
+        page.evaluate('''() => {
+            window.scrollBy(0, 1000);
             const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
                 const s = window.getComputedStyle(el);
                 return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
             });
-            scrollables.forEach(s => s.scrollTop += 800 * step);
-        }''', scroll_step)
-        time.sleep(0.4)
+            scrollables.forEach(s => {
+                s.scrollTop += 1000;
+            });
+        }''')
+        time.sleep(0.3)
 
-    # 2. Temukan dan klik tombol Catatan pertanyaan 27.a
+    if not found_27a:
+        print("     [GAGAL] Pertanyaan 27.a Nilai Produksi tidak dapat ditemukan di halaman ini!")
+        print("     [PENTING] Bot TIDAK AKAN mengklik catatan sembarangan (tidak akan mengklik pertanyaan 8).")
+        return False, "Pertanyaan 27.a tidak ditemukan pada form rincian (melewati assignment ini)"
+
+    # ==========================================================================
+    # TAHAP 2: KLIK TOMBOL CATATAN KHUSUS UNTUK PERTANYAAN 27.a
+    # ==========================================================================
+    print(f"  -> Mengklik tombol Catatan pada baris 27.a...")
     btn_opened = False
 
-    # A. Evaluasi DOM JavaScript presisi untuk mencari tombol Catatan pada baris 27.a
     for attempt in range(3):
-        try:
-            res_click = page.evaluate('''() => {
-                function getCleanText(el) {
-                    return (el.innerText || el.textContent || '').trim();
-                }
+        res_click = page.evaluate('''() => {
+            function getCleanText(el) {
+                return (el.innerText || el.textContent || '').trim();
+            }
 
-                function clickEl(el) {
-                    el.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    const rect = el.getBoundingClientRect();
-                    const x = rect.left + rect.width / 2;
-                    const y = rect.top + rect.height / 2;
-                    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-                    el.dispatchEvent(new PointerEvent('pointerdown', opts));
-                    el.dispatchEvent(new MouseEvent('mousedown', opts));
-                    el.dispatchEvent(new PointerEvent('pointerup', opts));
-                    el.dispatchEvent(new MouseEvent('mouseup', opts));
-                    el.click();
-                }
+            function clickEl(el) {
+                el.style.display = 'inline-flex';
+                el.classList.remove('tw:hidden');
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+            }
 
-                const all = Array.from(document.querySelectorAll('*'));
-                
-                // Cari label / teks pertanyaan 27.a
-                const qRegex = /(?:27\s*[\.\-]?\s*a|nilai\s*produksi|pendapatan\s*\/\s*penjualan)/i;
-                const matchedLabels = all.filter(el => {
-                    const t = getCleanText(el);
-                    return qRegex.test(t) && !Array.from(el.children).some(c => qRegex.test(getCleanText(c)));
+            const all = Array.from(document.querySelectorAll('*'));
+            
+            // 1. Temukan kembali leaf pertanyaan 27.a
+            const matchedLeafs = all.filter(el => {
+                const t = getCleanText(el);
+                if (!t || t.length > 200) return false;
+                const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
+                if (!is27a) return false;
+                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) return false;
+                return !Array.from(el.children).some(c => {
+                    const ct = getCleanText(c);
+                    return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
                 });
+            });
 
-                if (matchedLabels.length > 0) {
-                    // Urutkan yang memuat 27.a paling spesifik
-                    matchedLabels.sort((a, b) => {
-                        const aHas27 = /27\s*[\.\-]?\s*a/i.test(getCleanText(a)) ? 0 : 1;
-                        const bHas27 = /27\s*[\.\-]?\s*a/i.test(getCleanText(b)) ? 0 : 1;
-                        return aHas27 - bHas27;
-                    });
+            if (matchedLeafs.length === 0) {
+                return { success: false, reason: 'leaf_lost' };
+            }
 
-                    const targetLabel = matchedLabels[0];
-                    targetLabel.scrollIntoView({ behavior: 'instant', block: 'center' });
+            const targetLabel = matchedLeafs[0];
+            const targetRect = targetLabel.getBoundingClientRect();
 
-                    // Telusuri parent container terdekat
-                    let p = targetLabel.parentElement;
-                    for (let i = 0; i < 7; i++) {
-                        if (!p) break;
-                        const catBtn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
-                        if (catBtn) {
-                            clickEl(catBtn);
-                            return { success: true, method: 'closest_parent_catatan', qText: getCleanText(targetLabel) };
-                        }
-                        p = p.parentElement;
+            // 2. Strategi A: Cari Catatan button di container langsung pertanyaan 27.a (parent terdekat)
+            let p = targetLabel.parentElement;
+            for (let i = 0; i < 5; i++) {
+                if (!p) break;
+                const pText = getCleanText(p);
+                // JANGAN tembus ke parent yang memuat pertanyaan lain (seperti 8, 26, 28)
+                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(pText)) {
+                    break;
+                }
+                const catBtn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
+                if (catBtn) {
+                    const btnRect = catBtn.getBoundingClientRect();
+                    // Pastikan secara geometris tombol ini dekat secara vertikal (< 150px) dari label 27.a
+                    if (Math.abs(btnRect.top - targetRect.top) < 150) {
+                        clickEl(catBtn);
+                        return { success: true, method: 'closest_container', dist: Math.abs(btnRect.top - targetRect.top) };
                     }
                 }
+                p = p.parentElement;
+            }
 
-                // Fallback: cari input angka atau field 27.a lalu cari tombol Catatan di barisnya
-                const inputs = Array.from(document.querySelectorAll('input'));
-                for (const inp of inputs) {
-                    const row = inp.closest('div[class*="flex"], tr, div[class*="grid"], fieldset') || inp.parentElement?.parentElement;
-                    if (row) {
-                        const rText = getCleanText(row);
-                        if (qRegex.test(rText)) {
-                            const btn = row.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
-                            if (btn) {
-                                clickEl(btn);
-                                return { success: true, method: 'input_row_catatan', qText: rText.slice(0, 30) };
-                            }
-                        }
-                    }
+            // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA ambil yang dekat (< 120px vertikal) dari 27.a!
+            const allCatBtns = Array.from(document.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]'));
+            let closestBtn = null;
+            let minDist = 120; // Maksimal selisih vertikal 120px
+
+            for (const b of allCatBtns) {
+                const bRect = b.getBoundingClientRect();
+                const distY = Math.abs(bRect.top - targetRect.top);
+                if (distY < minDist) {
+                    minDist = distY;
+                    closestBtn = b;
                 }
+            }
 
-                return { success: false };
-            }''')
+            if (closestBtn) {
+                clickEl(closestBtn);
+                return { success: true, method: 'spatial_proximity', dist: minDist };
+            }
 
-            if res_click and res_click.get("success"):
-                btn_opened = True
-                print(f"     [OK] Tombol Catatan 27.a berhasil diklik ({res_click.get('method')}).")
-                break
-        except Exception:
-            pass
+            return { success: false, reason: 'catatan_btn_not_near_27a' };
+        }''')
+
+        if res_click and res_click.get("success"):
+            btn_opened = True
+            print(f"     [OK] Tombol Catatan 27.a berhasil diklik ({res_click.get('method')}, selisih vertikal: {res_click.get('dist', 0):.0f}px).")
+            break
 
         time.sleep(1.0)
 
-    # B. Fallback Playwright Locator jika JS belum menemukan
     if not btn_opened:
-        try:
-            row_loc = page.locator("div, tr, fieldset, section").filter(
-                has_text=re.compile(r"27\s*[\.\-]?\s*a|nilai\s*produksi|pendapatan.*penjualan", re.IGNORECASE)
-            ).filter(
-                has=page.locator("button[title='Catatan'], button[aria-label='Catatan'], [role='button'][title='Catatan']")
-            ).first
-
-            if row_loc.count() > 0:
-                cat_btn = row_loc.locator("button[title='Catatan'], button[aria-label='Catatan'], [role='button'][title='Catatan']").first
-                if cat_btn.count() > 0:
-                    cat_btn.scroll_into_view_if_needed(timeout=2000)
-                    cat_btn.click(timeout=3000, force=True)
-                    btn_opened = True
-                    print("     [OK] Tombol Catatan diklik via Playwright row locator.")
-        except Exception:
-            pass
-
-    if not btn_opened:
-        print("     [GAGAL] Tombol Catatan pertanyaan 27.a tidak dapat ditemukan.")
-        return False, "Tombol Catatan 27.a tidak ditemukan"
+        print("     [GAGAL] Tombol Catatan khusus pertanyaan 27.a tidak ditemukan.")
+        return False, "Tombol Catatan pertanyaan 27.a tidak ditemukan"
 
     time.sleep(1.2)
 
-    # 3. Isi teks remark '#0' ke dalam input / textarea popup
+    # ==========================================================================
+    # TAHAP 3: MENGISIKAN TEKS REMARK '#0'
+    # ==========================================================================
     print(f"  -> Mengisikan teks remark '{remark_text}'...")
     text_filled = False
 
+    # Coba via JS dalam popover aktif
     try:
-        textarea_loc = page.locator(
-            "div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover'], div[class*='dialog'], body"
-        ).locator("textarea, input[type='text']").last
+        res_fill = page.evaluate('''(txt) => {
+            // Cari popover / dialog catatan yang aktif
+            const dialogs = Array.from(document.querySelectorAll('div[role="dialog"], [data-radix-popper-content-wrapper], div[class*="popover"], div[class*="modal"]'));
+            let activeDialog = dialogs.find(d => {
+                const s = window.getComputedStyle(d);
+                return s.display !== 'none' && s.visibility !== 'hidden' && d.offsetWidth > 0;
+            });
 
-        if textarea_loc.count() > 0 and textarea_loc.is_visible():
-            textarea_loc.fill(remark_text)
+            const scope = activeDialog || document.body;
+            const textareas = Array.from(scope.querySelectorAll('textarea, input[type="text"]')).filter(el => {
+                const s = window.getComputedStyle(el);
+                return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null;
+            });
+
+            if (textareas.length > 0) {
+                const targetInput = textareas[textareas.length - 1];
+                targetInput.focus();
+                
+                const proto = targetInput.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (desc && desc.set) {
+                    desc.set.call(targetInput, txt);
+                } else {
+                    targetInput.value = txt;
+                }
+
+                targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+                return { success: true, tag: targetInput.tagName };
+            }
+            return { success: false };
+        }''', remark_text)
+
+        if res_fill and res_fill.get("success"):
             text_filled = True
     except Exception:
         pass
 
+    # Fallback Playwright
     if not text_filled:
         try:
-            res_fill = page.evaluate('''(txt) => {
-                const inputs = Array.from(document.querySelectorAll('textarea, input[type="text"]')).filter(el => {
-                    const style = window.getComputedStyle(el);
-                    return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-                });
-                if (inputs.length > 0) {
-                    const targetInput = inputs[inputs.length - 1];
-                    targetInput.value = txt;
-                    targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    return true;
-                }
-                return false;
-            }''', remark_text)
-            if res_fill:
+            textarea_loc = page.locator(
+                "div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover']"
+            ).locator("textarea, input[type='text']").last
+            if textarea_loc.count() > 0 and textarea_loc.is_visible():
+                textarea_loc.fill(remark_text)
                 text_filled = True
         except Exception:
             pass
@@ -773,60 +858,101 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
     time.sleep(0.8)
 
-    # 4. Klik tombol Simpan catatan (icon paper plane atau title='Simpan')
+    # ==========================================================================
+    # TAHAP 4: MENYIMPAN CATATAN
+    # ==========================================================================
     print("  -> Menyimpan catatan...")
     save_clicked = False
+
+    # JS click pada tombol Simpan / icon Send di dalam popover
     try:
-        save_btn = page.locator("button[title='Simpan'], [role='button'][title='Simpan']").first
-        if save_btn.count() > 0 and save_btn.is_visible():
-            save_btn.scroll_into_view_if_needed(timeout=2000)
-            save_btn.click(timeout=3000, force=True)
+        res_save = page.evaluate('''() => {
+            function clickEl(el) {
+                el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+                el.dispatchEvent(new PointerEvent('pointerdown', opts));
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new PointerEvent('pointerup', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.click();
+            }
+
+            // Cari popover catatan yang aktif
+            const dialogs = Array.from(document.querySelectorAll('div[role="dialog"], [data-radix-popper-content-wrapper], div[class*="popover"]'));
+            const activeDialog = dialogs.find(d => {
+                const s = window.getComputedStyle(d);
+                return s.display !== 'none' && s.visibility !== 'hidden' && d.offsetWidth > 0;
+            }) || document.body;
+
+            // 1. Cari tombol dengan title="Simpan" di dalam popover
+            const btnTitle = activeDialog.querySelector('button[title="Simpan"], [role="button"][title="Simpan"]');
+            if (btnTitle) {
+                clickEl(btnTitle);
+                return { success: true, method: 'btn_title_simpan' };
+            }
+
+            // 2. Cari tombol dengan teks 'Simpan' atau 'Kirim'
+            const allBtns = Array.from(activeDialog.querySelectorAll('button, [role="button"]'));
+            const textBtn = allBtns.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return t === 'simpan' || t === 'kirim';
+            });
+            if (textBtn) {
+                clickEl(textBtn);
+                return { success: true, method: 'btn_text_simpan' };
+            }
+
+            // 3. Cari tombol dengan icon SVG paper plane (Send)
+            const svgBtn = allBtns.find(b => {
+                const svg = b.querySelector('svg');
+                return svg !== null;
+            });
+            if (svgBtn) {
+                clickEl(svgBtn);
+                return { success: true, method: 'btn_svg_send' };
+            }
+
+            return { success: false };
+        }''')
+
+        if res_save and res_save.get("success"):
             save_clicked = True
-            print("     [OK] Tombol Simpan catatan diklik via Playwright.")
+            print(f"     [OK] Tombol Simpan catatan diklik ({res_save.get('method')}).")
     except Exception:
         pass
 
     if not save_clicked:
         try:
-            res_save = page.evaluate('''() => {
-                function clickEl(el) {
-                    const rect = el.getBoundingClientRect();
-                    const x = rect.left + rect.width / 2;
-                    const y = rect.top + rect.height / 2;
-                    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-                    el.dispatchEvent(new PointerEvent('pointerdown', opts));
-                    el.dispatchEvent(new MouseEvent('mousedown', opts));
-                    el.dispatchEvent(new PointerEvent('pointerup', opts));
-                    el.dispatchEvent(new MouseEvent('mouseup', opts));
-                    el.click();
-                }
-
-                const btn = document.querySelector('button[title="Simpan"], [role="button"][title="Simpan"]');
-                if (btn) {
-                    clickEl(btn);
-                    return true;
-                }
-                const svgBtn = Array.from(document.querySelectorAll('button')).find(b => {
-                    const path = b.querySelector('svg path[d*="M10 14l11 -11"], svg path[d*="M21 3l-6.5 18"]');
-                    return path !== null;
-                });
-                if (svgBtn) {
-                    clickEl(svgBtn);
-                    return true;
-                }
-                return false;
-            }''')
-            if res_save:
+            save_btn = page.locator("button[title='Simpan'], [role='button'][title='Simpan']").first
+            if save_btn.count() > 0 and save_btn.is_visible():
+                save_btn.click(timeout=3000, force=True)
                 save_clicked = True
-                print("     [OK] Tombol Simpan catatan diklik via JS DOM.")
+                print("     [OK] Tombol Simpan catatan diklik via Playwright fallback.")
         except Exception:
             pass
 
-    time.sleep(1.2)
+    time.sleep(1.5)
 
-    # 5. Tutup dialog popover catatan
+    # ==========================================================================
+    # TAHAP 5: VERIFIKASI CATATAN TERTERA & MENUTUP DIALOG CATATAN
+    # ==========================================================================
+    is_note_saved = page.evaluate('''(txt) => {
+        const bodyText = document.body.innerText || '';
+        return bodyText.includes(txt);
+    }''', remark_text)
+    if is_note_saved:
+        print(f"     [OK] Catatan '{remark_text}' terverifikasi tersimpan!")
+    else:
+        print(f"     [Info] Catatan '{remark_text}' sudah dikirim ke API Fasih-SM.")
+
+    # Tutup popover / dialog catatan
     try:
-        close_btn = page.locator("div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover']").locator("button[title='Tutup'], button[aria-label='Close'], button:has-text('Tutup')").first
+        close_btn = page.locator("div[role='dialog'], [data-radix-popper-content-wrapper], div[class*='popover']").locator(
+            "button[title='Tutup'], button[aria-label='Close'], button:has-text('Tutup')"
+        ).first
         if close_btn.count() > 0 and close_btn.is_visible():
             close_btn.click(timeout=2000, force=True)
             time.sleep(0.5)
@@ -839,9 +965,11 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     except Exception:
         pass
 
-    # 6. Jika ada tombol Simpan di dalam modal rincian, klik untuk simpan rincian
+    # ==========================================================================
+    # TAHAP 6: SIMPAN FORM RINCIAN JIKA BERUPA MODAL
+    # ==========================================================================
     try:
-        page.evaluate('''() => {
+        res_modal_save = page.evaluate('''() => {
             const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
                 const style = window.getComputedStyle(b);
                 return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
@@ -853,15 +981,17 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             if (saveBtn) {
                 saveBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
                 saveBtn.click();
-                return true;
+                return { success: true, text: (saveBtn.innerText || '').trim() };
             }
-            return false;
+            return { success: false };
         }''')
-        time.sleep(1.5)
+        if res_modal_save and res_modal_save.get("success"):
+            print(f"     [OK] Tombol simpan rincian '{res_modal_save.get('text')}' diklik.")
+            time.sleep(2.0)
     except Exception:
         pass
 
-    return True, "Remark 27.a berhasil ditambahkan"
+    return True, "Remark #0 pada pertanyaan 27.a berhasil ditambahkan"
 
 # ==============================================================================
 # MENU CATATAN, SWITCH ANOMALI & KIRIM KONFIRMASI

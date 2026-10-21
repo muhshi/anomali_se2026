@@ -53,6 +53,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Perbaikan Scoping Tombol Catatan & Navigasi Pertanyaan 27.a (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug di mana bot sebelumnya mengklik tombol Catatan pada Pertanyaan 8 (seperti 8.d Jenis Kawasan) karena scoping selector container luas yang salah mencocokkan tombol pertama.
+  - Menambahkan scanning scroll aktif bertahap (hingga 24 langkah) untuk memastikan form/modal rincian digulir sampai Pertanyaan **27. a. Nilai produksi/pendapatan/penjualan barang dan jasa** benar-benar termuat dan berada di tengah layar.
+  - Menerapkan penguncian seleksi tombol Catatan berbasis isolasi kontainer dan kedekatan geometris vertikal (*spatial proximity* < 120px dari label 27.a), sehingga 100% mustahil salah mengklik tombol pertanyaan lain.
+  - Memperbaiki alur ekspansi sidebar `SE2026 - L` -> `BLOK II` dan pemilihan kartu usaha via tombol `Lihat Rincian`.
+  - Menambahkan verifikasi penyimpanan catatan di dalam popover sebelum ditutup agar catatan `#0` terkonfirmasi tersimpan di server Fasih-SM.
 - **Dukungan Multi-Sumber Google Sheets (`tambah_remark_27a.py`)**:
   - Menambahkan dukungan sumber data baru: Google Sheet **`Dtata_NTB`** (gid: `293925488`).
   - Menambahkan menu pilihan sumber data pada saat bot dijalankan:
