@@ -53,6 +53,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Isolasi Log & Cache Progres Lokal (`.gitignore`)**:
+  - Menambahkan `processed_tambah_remark.json` dan `laporan_tambah_remark.json` ke `.gitignore` serta menghapusnya dari git tracking (`git rm --cached`).
+  - Memastikan seluruh histori pengerjaan dan log rekap bot tetap tersimpan aman di komputer lokal tanpa ter-push ke repository.
 - **Perbaikan Kritis Menu BLOK II, Scoping 27.a vs 26.f, dan Feedback Submit (`tambah_remark_27a.py`)**:
   - **Fix Buka Menu BLOK II**: Menghapus pre-check palsu yang sebelumnya langsung menganggap BLOK II aktif karena teks sidebar. Sekarang bot selalu mengklik menu `BLOK II` secara eksplisit dan mengekspansi accordion `SE2026 - L` jika tertutup.
   - **Fix Isolasi Catatan 27.a (Anti Pertanyaan 26.f)**: Memperbaiki pemilihan tombol Catatan agar tidak pernah mengklik Pertanyaan `26. f. Total pengeluaran (a+b+c+d+e)`. Menambahkan filter arah vertikal ketat (`top >= targetRect.top - 10`) sehingga tombol yang terletak di atas 27.a (milik 26.f) ditolak mentah-mentah, serta memfilter container agar tidak mengandung teks `26.` atau `total pengeluaran`.
