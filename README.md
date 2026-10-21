@@ -53,6 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Optimasi Deteksi Kuesioner Siap & Penghilangan False Positive Overlay (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug false positive deteksi overlay backdrop (`.fixed.inset-0` + `svg`) yang menyebabkan bot macet berputar lama menunggu padahal formulir kuesioner sudah tampil di layar.
+  - Mengimplementasikan `wait_for_kuesioner_ready` khusus saat awal membuka link assignment `/edit`. Bot secara cerdas mendeteksi kemunculan elemen kuesioner (`SE2026`, `BLOK`, atau navigasi sidebar). Begitu kuesioner ter-render dan loading splash screen hilang, bot langsung melanjutkan proses seketika tanpa menunggu timeout.
+  - Mengubah mode navigasi `page.goto` ke `domcontentloaded` untuk mencegah hanging akibat request background yang lambat.
+  - Menghapus pengecekan loading berulang yang tidak perlu di dalam menu BLOK II, pemilihan kartu usaha, dialog popover, dan loop scroll pemindaian pertanyaan 27.a sehingga bot bekerja jauh lebih cepat dan responsif.
 - **Deteksi Loading Dinamis & Penanganan Website Lemot (`tambah_remark_27a.py`)**:
   - Menambahkan fungsi `wait_for_loading_finish` yang secara otomatis mendeteksi animasi spinner (`animate-spin`), skeleton, shimmer, teks *'Memuat...' / 'Loading...'*, maupun overlay backdrop.
   - Bot secara adaptif menunggu hingga proses pengambilan data dari server Fasih-SM selesai sepenuhnya sebelum mencoba berinteraksi dengan menu, kartu usaha, atau pertanyaan formulir.
