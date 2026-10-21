@@ -24,6 +24,7 @@ data/*
 !data/**/.gitkeep
 *.xlsx
 *.csv
+*.zip
 
 # Personal/Temp files
 coba.py

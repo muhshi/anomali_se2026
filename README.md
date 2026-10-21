@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Paket Distribusi Siap Pakai untuk Rekan Kerja (`Bot-Tambah-Remark-SE2026.zip`)**:
+  - Membuat bundle zip mandiri khusus bot tambah remark yang siap dibagikan ke rekan kerja.
+  - Sudah menyertakan link Google Apps Script live sync, data backup offline, dan master kode wilayah, dengan `operator_name` kosong sehingga teman Anda langsung diminta memasukkan namanya saat pertama kali dijalankan.
+  - Menyertakan file panduan `PANDUAN_PENGGUNAAN.txt` di dalam zip.
 - **Penamaan Sumber Data: Prioritas 1 & Prioritas 2 (`tambah_remark_27a.py`)**:
   - Mengubah label sumber spreadsheet di terminal menjadi:
     - `[1] Prioritas 1: Data Detail Anomali (gid: 0) [DEFAULT]`
