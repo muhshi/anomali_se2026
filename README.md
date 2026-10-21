@@ -53,6 +53,16 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Filter Berdasarkan Kecamatan & Auto-Hide Wilayah Selesai (`tambah_remark_27a.py`)**:
+  - Menambahkan menu filter baru **`[1] Filter Berdasarkan Kecamatan`** yang mengelompokkan data berdasarkan kode & nama resmi kecamatan di Kab. Demak (3321).
+  - **Sistem Auto-Hide Wilayah Selesai**: Kecamatan, Desa, atau Batch yang seluruh datanya sudah berstatus selesai (di cache lokal maupun spreadsheet) otomatis disembunyikan dari daftar pilihan terminal sehingga pengguna tidak akan memilih wilayah kosong/sudah beres.
+  - Menambahkan opsi sub-wilayah saat memilih kecamatan: memproses seluruh desa sekaligus atau memilih desa tertentu yang belum selesai di kecamatan tersebut.
+- **Sinkronisasi Live Google Sheets & Pewarnaan Hijau Otomatis (`google_apps_script_sync.js` & `sheet_sync_config.json`)**:
+  - Menyediakan script **Google Apps Script Web App** (`google_apps_script_sync.js`) siap pasang untuk Google Spreadsheet.
+  - Setiap kali bot selesai memproses baris data di Fasih-SM, bot secara otomatis menambahkan/memperbarui kolom **`Status Pengerjaan`** menjadi **`SELESAI`** dan memberi warna latar **HIJAU LEMBUT (`#d9ead3`)** pada baris tersebut di Google Sheet secara live.
+  - Mendukung kolaborasi tim: saat teman Anda menjalankan bot di komputernya, bot otomatis mendeteksi baris yang sudah ditandai selesai di Google Sheet dan melewatinya (skip) tanpa memproses ulang.
+  - Dilengkapi sistem antrean aman (`LockService`) pada Apps Script agar tidak terjadi tabrakan data saat banyak bot berjalan serentak.
+  - Dual-layer cache: tetap menyimpan cache lokal offline (`processed_tambah_remark.json`) sebagai cadangan aman jika koneksi terputus.
 - **Isolasi Log & Cache Progres Lokal (`.gitignore`)**:
   - Menambahkan `processed_tambah_remark.json` dan `laporan_tambah_remark.json` ke `.gitignore` serta menghapusnya dari git tracking (`git rm --cached`).
   - Memastikan seluruh histori pengerjaan dan log rekap bot tetap tersimpan aman di komputer lokal tanpa ter-push ke repository.
