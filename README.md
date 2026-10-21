@@ -53,6 +53,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Penamaan Sumber Data: Prioritas 1 & Prioritas 2 (`tambah_remark_27a.py`)**:
+  - Mengubah label sumber spreadsheet di terminal menjadi:
+    - `[1] Prioritas 1: Data Detail Anomali (gid: 0) [DEFAULT]`
+    - `[2] Prioritas 2: Data NTB (gid: 293925488)`
+    - `[3] GABUNGKAN SEMUA SHEET (Prioritas 1 + Prioritas 2)`
+  - Menyediakan script utilitas `push_local_cache_to_sheets.py` untuk mensinkronkan seluruh riwayat data lokal yang sudah pernah sukses dikerjakan ke Google Sheets.
 - **Dukungan Multi-Spreadsheet & Keamanan Script URL (`sheet_sync_config.json` & `.gitignore`)**:
   - Menambahkan dukungan sinkronisasi ke multi-spreadsheet (`gas_webapp_urls`): jika pengguna mengerjakan *Data detail anomali* atau *Dtata_NTB*, bot secara cerdas mengarahkan request ke URL Apps Script spreadsheet yang bersangkutan.
   - Memasukkan `sheet_sync_config.json` ke `.gitignore` sehingga URL Web App privat dan nama operator **tidak akan pernah ter-push ke GitHub**. Disediakan `sheet_sync_config.example.json` sebagai template repositori.

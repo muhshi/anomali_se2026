@@ -63,13 +63,13 @@ DEFAULT_REMARK_TEXT = "#0"
 SHEET_SOURCES = [
     {
         "id": "1",
-        "name": "Data detail anomali (gid: 0)",
+        "name": "Prioritas 1: Data Detail Anomali (gid: 0)",
         "url": "https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/export?format=csv&gid=0",
         "backup_filename": "data_detail_anomali_backup.csv"
     },
     {
         "id": "2",
-        "name": "Dtata_NTB (gid: 293925488)",
+        "name": "Prioritas 2: Data NTB (gid: 293925488)",
         "url": "https://docs.google.com/spreadsheets/d/1ra-HZlqn1md8AIYaZz5VmOg-5Dxj83LYOHrmChvyz0s/export?format=csv&gid=293925488",
         "backup_filename": "dtata_ntb_backup.csv"
     }
@@ -1789,9 +1789,9 @@ def main():
 
     # 1. Pilihan Sumber Data Google Sheets
     print("\nPILIHAN SUMBER DATA SPREADSHEET:")
-    print("  [1] Data detail anomali (https://docs.google.com/...gid=0) [DEFAULT]")
-    print("  [2] Dtata_NTB (https://docs.google.com/...gid=293925488)")
-    print("  [3] GABUNGKAN SEMUA SHEET (Data detail anomali + Dtata_NTB)")
+    print("  [1] Prioritas 1: Data Detail Anomali (https://docs.google.com/...gid=0) [DEFAULT]")
+    print("  [2] Prioritas 2: Data NTB (https://docs.google.com/...gid=293925488)")
+    print("  [3] GABUNGKAN SEMUA SHEET (Prioritas 1 + Prioritas 2)")
 
     src_choice = input("\nPilih sumber data [1/2/3] (Default: 1): ").strip()
     if src_choice == "2":
