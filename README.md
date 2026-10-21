@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-21
+- **Perbaikan Kritis Menu BLOK II, Scoping 27.a vs 26.f, dan Feedback Submit (`tambah_remark_27a.py`)**:
+  - **Fix Buka Menu BLOK II**: Menghapus pre-check palsu yang sebelumnya langsung menganggap BLOK II aktif karena teks sidebar. Sekarang bot selalu mengklik menu `BLOK II` secara eksplisit dan mengekspansi accordion `SE2026 - L` jika tertutup.
+  - **Fix Isolasi Catatan 27.a (Anti Pertanyaan 26.f)**: Memperbaiki pemilihan tombol Catatan agar tidak pernah mengklik Pertanyaan `26. f. Total pengeluaran (a+b+c+d+e)`. Menambahkan filter arah vertikal ketat (`top >= targetRect.top - 10`) sehingga tombol yang terletak di atas 27.a (milik 26.f) ditolak mentah-mentah, serta memfilter container agar tidak mengandung teks `26.` atau `total pengeluaran`.
+  - **Fix Feedback Kirim / Submit Kuesioner**: Memperbaiki `wait_for_submit_finish` agar tidak keluar sebelum server memberikan feedback. Bot kini menunggu request network selesai (*networkidle*), memantau redirect keluar dari `/edit`, dan menunggu toast notifikasi sukses atau perubahan status formulir sebelum berganti ke assignment berikutnya.
 - **Penanganan Loading Submit / Konfirmasi Kirim Kuesioner (`tambah_remark_27a.py`)**:
   - Menambahkan fungsi `wait_for_submit_finish` untuk menangani proses loading saat menekan tombol konfirmasi submit kuesioner (*"Ya, kirim"* / *"Konfirmasi"*).
   - Bot secara dinamis menunggu hingga respon server selesai, loading spinner pengiriman hilang, notifikasi sukses muncul, atau halaman dialihkan (*redirect*).

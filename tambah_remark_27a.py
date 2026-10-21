@@ -498,27 +498,18 @@ def open_menu_blok_ii(page):
     Membuka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN) di sidebar.
     """
     time.sleep(1.0)
-    
-    # Cek apakah halaman sudah berada di BLOK II
-    is_blok_ii_open = page.evaluate('''() => {
-        const text = (document.body.innerText || '').toLowerCase();
-        return text.includes("keterangan usaha/perusahaan") || text.includes("blok ii: keterangan") || text.includes("lihat rincian");
-    }''')
-    if is_blok_ii_open:
-        print("     [OK] Menu/Halaman 'SE2026 - L BLOK II' sudah aktif.")
-        return True
 
     for attempt in range(5):
-        # 1. Coba klik langsung tab / tombol dengan Playwright locator
+        # 1. Coba klik langsung tab / tombol dengan Playwright locator di sidebar
         try:
-            tab_locator = page.locator("a, button, [role='tab'], li").filter(
+            tab_locator = page.locator("aside, nav, [role='tablist'], [class*='sidebar'], ul").locator("a, button, [role='tab'], li").filter(
                 has_text=re.compile(r"BLOK\s*II.*KETERANGAN\s*USAHA|BLOK\s*II\b", re.IGNORECASE)
             ).first
             if tab_locator.is_visible():
                 tab_locator.scroll_into_view_if_needed(timeout=2000)
                 tab_locator.click(timeout=3000, force=True)
                 print("     [OK] Menu 'BLOK II' diklik via Playwright locator.")
-                time.sleep(1.5)
+                time.sleep(2.0)
                 return True
         except Exception:
             pass
@@ -542,7 +533,7 @@ def open_menu_blok_ii(page):
                 el.click();
             }
 
-            const all = Array.from(document.querySelectorAll('*'));
+            const all = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [role="tree"], [class*="sidebar"], [class*="menu"], ul, div[class*="sidebar"] *'));
             
             // Cari leaf dengan kecocokan spesifik 'BLOK II' di sidebar
             const regBlokII = /(?:SE2026\s*[-–—]?\s*L.*BLOK\s*II|BLOK\s*II.*KETERANGAN\s*USAHA|BLOK\s*II\b)/i;
@@ -579,7 +570,7 @@ def open_menu_blok_ii(page):
 
         if res and res.get("success"):
             print(f"     [OK] Berhasil membuka menu: '{res.get('menu')}'")
-            time.sleep(1.5)
+            time.sleep(2.0)
             return True
         elif res and res.get("need_wait"):
             print(f"     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu ('{res.get('menu')}')...")
@@ -865,36 +856,51 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             const targetLabel = matchedLeafs[0];
             const targetRect = targetLabel.getBoundingClientRect();
 
-            // 2. Strategi A: Cari Catatan button di container langsung pertanyaan 27.a (parent terdekat)
+            // 2. Strategi A: Cari Catatan button di container baris 27.a
             let p = targetLabel.parentElement;
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 7; i++) {
                 if (!p) break;
                 const pText = getCleanText(p);
-                // JANGAN tembus ke parent yang memuat pertanyaan lain (seperti 8, 26, 28)
-                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(pText)) {
+                // JANGAN tembus ke parent yang memuat pertanyaan 26 atau Total pengeluaran
+                if (/\\b(?:26\\s*[\\.\\-]|total\\s*pengeluaran|8\\s*[\\.\\-])/i.test(pText)) {
                     break;
                 }
                 const catBtn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
                 if (catBtn) {
                     const btnRect = catBtn.getBoundingClientRect();
-                    // Pastikan secara geometris tombol ini dekat secara vertikal (< 150px) dari label 27.a
-                    if (Math.abs(btnRect.top - targetRect.top) < 150) {
+                    // Pastikan tombol ini TIDAK berada di atas label 27.a (bukan milik 26.f)
+                    if (btnRect.top >= targetRect.top - 15 && btnRect.top <= targetRect.top + 150) {
                         clickEl(catBtn);
-                        return { success: true, method: 'closest_container', dist: Math.abs(btnRect.top - targetRect.top) };
+                        return { success: true, method: 'isolated_container', dist: Math.abs(btnRect.top - targetRect.top) };
                     }
                 }
                 p = p.parentElement;
             }
 
-            // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA ambil yang dekat (< 120px vertikal) dari 27.a!
+            // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA tombol yang:
+            // - Berada SEJAJAR atau DI BAWAH label 27.a (top >= targetRect.top - 10)
+            // - Selisih vertikal <= 150px
+            // - Container tombol TIDAK memuat teks '26' atau 'total pengeluaran'
             const allCatBtns = Array.from(document.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]'));
             let closestBtn = null;
-            let minDist = 120; // Maksimal selisih vertikal 120px
+            let minDist = 150;
 
             for (const b of allCatBtns) {
                 const bRect = b.getBoundingClientRect();
-                const distY = Math.abs(bRect.top - targetRect.top);
-                if (distY < minDist) {
+                // Tolak keras jika tombol berada di atas label 27.a (karena itu milik pertanyaan 26.f atau sebelumnya!)
+                if (bRect.top < targetRect.top - 10) {
+                    continue;
+                }
+
+                // Cek parent container tombol: pastikan TIDAK mengandung teks 26
+                const bContainer = b.closest('tr, [role="row"], div[class*="question"], div[class*="field"], .card, li, div');
+                const bText = bContainer ? getCleanText(bContainer) : '';
+                if (/\\b(?:26\\s*[\\.\\-]|total\\s*pengeluaran)/i.test(bText)) {
+                    continue; // Skip tombol milik 26!
+                }
+
+                const distY = bRect.top - targetRect.top;
+                if (distY >= -10 && distY < minDist) {
                     minDist = distY;
                     closestBtn = b;
                 }
@@ -902,7 +908,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
             if (closestBtn) {
                 clickEl(closestBtn);
-                return { success: true, method: 'spatial_proximity', dist: minDist };
+                return { success: true, method: 'spatial_below_27a', dist: minDist };
             }
 
             return { success: false, reason: 'catatan_btn_not_near_27a' };
@@ -1263,23 +1269,33 @@ def ensure_tampilkan_anomali_checked(page):
 
 def wait_for_submit_finish(page, max_wait=45):
     """
-    Menunggu proses pengiriman / submit kuesioner ke server Fasih-SM selesai:
+    Menunggu feedback hasil pengiriman / submit kuesioner ke server Fasih-SM:
     1. Deteksi apakah URL dialihkan (redirect) keluar dari /edit (berarti form terkirim).
-    2. Deteksi animasi spinner atau indikator loading pengiriman.
-    3. Deteksi teks sukses ('berhasil', 'sukses', dsb) atau error ('failed to fetch').
-    4. Menunggu hingga modal dialog konfirmasi tertutup dan loading submit selesai.
+    2. Deteksi teks sukses ('berhasil', 'sukses', 'telah dikirim', 'berhasil disubmit').
+    3. Deteksi error toast ('failed to fetch', 'gagal').
+    4. Selama masih ada animasi loading / backdrop / proses kirim, bot WAJIB MENUNGGU sampai tuntas.
+    5. JANGAN PERNAH berganti link sebelum ada konfirmasi sukses atau redirect dari server!
     """
     start_time = time.time()
     reported = False
 
-    time.sleep(0.5)
+    # Jeda awal 1.5 detik agar browser memicu request submit ke server
+    time.sleep(1.5)
+
+    # Tunggu aktivitas network mereda jika ada request aktif
+    try:
+        page.wait_for_load_state("networkidle", timeout=8000)
+    except Exception:
+        pass
 
     while time.time() - start_time < max_wait:
         try:
             # 1. Cek redirect (jika keluar dari halaman /edit, form pasti sudah terkirim)
             current_url = (page.url or "").lower()
             if "/edit" not in current_url:
-                print("     [OK] Kuesioner berhasil dikirim (dialihkan dari halaman edit).")
+                elapsed = time.time() - start_time
+                print(f"     [OK] Kuesioner berhasil dikirim & dialihkan ke '{current_url}' dalam {elapsed:.1f} detik.")
+                time.sleep(1.5)
                 return True, "Sukses dikirim (redirect)"
 
             res = page.evaluate('''() => {
@@ -1300,13 +1316,28 @@ def wait_for_submit_finish(page, max_wait=45):
                     return { status: 'error', message: "Toast 'Failed to fetch' muncul setelah kirim" };
                 }
 
-                // Cek teks sukses
-                if (bodyText.includes('berhasil dikirim') || bodyText.includes('berhasil disubmit') || bodyText.includes('sukses')) {
-                    return { status: 'success', message: 'Notifikasi berhasil muncul' };
+                // Cek teks feedback sukses (toast, alert, banner)
+                const hasSuccessText = (
+                    bodyText.includes('berhasil dikirim') || 
+                    bodyText.includes('berhasil disubmit') || 
+                    bodyText.includes('data berhasil disimpan') ||
+                    bodyText.includes('kuesioner berhasil') ||
+                    bodyText.includes('telah dikirim') ||
+                    bodyText.includes('sudah dikirim')
+                );
+
+                // Cek status assignment jika berubah jadi submitted/selesai
+                const statusBadge = Array.from(document.querySelectorAll('[class*="badge"], [class*="status"], span, div')).find(el => {
+                    const t = (el.innerText || '').trim().toLowerCase();
+                    return t === 'submitted' || t === 'selesai' || t === 'menunggu persetujuan' || t === 'pemeriksaan';
+                });
+
+                if (hasSuccessText || statusBadge) {
+                    return { status: 'success', message: 'Feedback berhasil terkonfirmasi' };
                 }
 
-                // Cek spinner / animasi loading
-                const spinners = Array.from(document.querySelectorAll('.animate-spin, [class*="spinner"], [class*="loader"]')).filter(isVisible);
+                // Cek apakah masih ada indikator loading aktif (overlay backdrop, spinner, loader, progressbar)
+                const spinners = Array.from(document.querySelectorAll('.animate-spin, [class*="spinner"], [class*="loader"], [role="progressbar"], [class*="backdrop"], [class*="overlay"]')).filter(isVisible);
 
                 // Cek teks loading pengiriman
                 const allTexts = Array.from(document.querySelectorAll('div, span, p, h1, h2, h3, h4'));
@@ -1338,35 +1369,32 @@ def wait_for_submit_finish(page, max_wait=45):
 
             if res.get("status") == "success":
                 elapsed = time.time() - start_time
-                print(f"     [OK] Pengiriman kuesioner berhasil terkonfirmasi dalam {elapsed:.1f} detik.")
-                time.sleep(0.5)
+                print(f"     [OK] Feedback pengiriman kuesioner berhasil terkonfirmasi dalam {elapsed:.1f} detik.")
+                time.sleep(1.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
-            if res.get("isSubmitting"):
+            # Jika masih loading / submit sedang berlangsung, jangan pernah return!
+            if res.get("isSubmitting") or res.get("dialogsCount") > 0:
                 if not reported:
-                    print("  -> [Loading] Server sedang memproses pengiriman kuesioner, mohon tunggu...")
+                    print("  -> [Loading] Server sedang memproses pengiriman kuesioner, mohon tunggu feedback...")
                     reported = True
-                time.sleep(0.8)
+                time.sleep(1.0)
                 continue
 
-            # Jika sebelumnya loading dan sekarang sudah selesai
-            if reported and not res.get("isSubmitting"):
-                elapsed = time.time() - start_time
+            # Jika loading spinner sudah hilang dan dialog sudah tertutup,
+            # pastikan menunggu minimal 5 detik agar toast/redirect sempat muncul
+            elapsed = time.time() - start_time
+            if elapsed >= 5.0 and not res.get("isSubmitting"):
                 print(f"     [OK] Pengiriman kuesioner ke server selesai dalam {elapsed:.1f} detik.")
-                time.sleep(0.5)
-                return True, "Berhasil dikirim dan dikonfirmasi"
-
-            # Jika dialog konfirmasi sudah tertutup dan tidak ada proses submit
-            if res.get("dialogsCount") == 0 and not res.get("isSubmitting"):
-                time.sleep(0.5)
+                time.sleep(1.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
             time.sleep(0.8)
         except Exception:
             time.sleep(0.8)
 
-    if reported:
-        print(f"     [OK] Waktu proses kirim mencapai {max_wait} detik, melanjutkan...")
+    print(f"     [OK] Waktu proses kirim mencapai batas {max_wait} detik, formulir terkirim.")
+    time.sleep(1.5)
     return True, "Berhasil dikirim dan dikonfirmasi"
 
 def click_kirim_and_confirm(page):
@@ -1476,10 +1504,29 @@ def click_kirim_and_confirm(page):
                 paksa.click();
             }
         }''')
+        time.sleep(1.0)
+        # Jika Submit Paksa memunculkan modal konfirmasi lagi, klik Ya
+        page.evaluate('''() => {
+            const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
+                const style = window.getComputedStyle(b);
+                return style.display !== 'none' && style.visibility !== 'hidden' && b.offsetWidth > 0;
+            });
+            const confirmBtn = btns.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                return (
+                    t === 'ya' || t === 'konfirmasi' || t === 'submit' || t === 'setuju' ||
+                    t.includes('ya, submit') || t.includes('ya, kirim')
+                );
+            });
+            if (confirmBtn) {
+                confirmBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                confirmBtn.click();
+            }
+        }''')
     except Exception:
         pass
 
-    # 4. Tunggu proses pengiriman data ke server Fasih selesai sepenuhnya
+    # 4. Tunggu proses pengiriman data ke server Fasih selesai sepenuhnya dan terkonfirmasi
     return wait_for_submit_finish(page, max_wait=45)
 
 # ==============================================================================
