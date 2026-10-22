@@ -53,6 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Fix Deteksi Kolom Dinamis & Sinkronisasi Total Awal Multi-Operator (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug deteksi kolom di Google Sheets: Prioritas 1 dan Prioritas 2 memiliki indeks kolom yang berbeda (Prioritas 1: link di Z, status di AA; Prioritas 2: link di AA, status di AB). Bot kini menggunakan deteksi huruf kolom secara dinamis (`get_source_column_letters`), mencegah kegagalan query status pada Prioritas 2.
+  - Menyempurnakan fungsi `is_done(it)` agar langsung memperhitungkan `it.get("is_sheet_done")`, serta memindai seluruh data live spreadsheet di awal dan menyinkronkan setiap baris selesai (dari operator manapun) ke dalam cache JSON lokal (`processed_tambah_remark.json`).
+  - Memperbaiki filter auto-hide wilayah: Kecamatan yang sudah tuntas 100% (seperti Bonang dan Wonosalam pada Prioritas 1) kini otomatis disembunyikan dari daftar pilihan, dan kecamatan yang sebagian sudah dikerjakan rekan lain (seperti Mijen oleh Aris) langsung berkurang jumlah sisa tugasnya secara real-time.
+  - Menambahkan parameter anti-cache CDN (`_t=timestamp` dan header `Cache-Control: no-cache`) pada `fetch_single_sheet` agar data CSV yang diunduh selalu kondisi paling mutakhir dari Google Spreadsheet.
 - **Sinkronisasi Realtime Google Spreadsheet Sebelum List Wilayah (`tambah_remark_27a.py`)**:
   - Sebelum menampilkan daftar Kecamatan, ID Desa, Batch, maupun Semua Data di terminal, bot otomatis mengambil status pengerjaan terbaru (`Status Pengerjaan`) dari Google Spreadsheet secara realtime menggunakan query berkecepatan tinggi dengan bypass cache CDN (`_t=timestamp`).
   - Mengupdate status `raw_data` in-memory dan memperbarui file cache JSON lokal (`processed_tambah_remark.json`) secara instan, sehingga cache lokal selalu sinkron dengan apa yang dikerjakan oleh operator lain di Google Spreadsheet.

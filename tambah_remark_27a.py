@@ -287,10 +287,77 @@ def save_report_data(report_list):
 # SINKRONISASI REALTIME CACHE & CEK STATUS GOOGLE SHEETS
 # ==============================================================================
 
+SHEET_COL_CACHE = {}
+
+def get_source_column_letters(source_info):
+    """
+    Mendeteksi huruf kolom (A, B, ... Z, AA, AB) secara dinamis dari header Google Sheets
+    agar query GViz 100% akurat tanpa hardcode huruf kolom.
+    """
+    name = source_info.get("name", "")
+    if name in SHEET_COL_CACHE:
+        return SHEET_COL_CACHE[name]
+
+    url = source_info.get("url", "")
+    gid = source_info.get("gid", "0")
+    if "gid=" in url:
+        m = re.search(r"gid=(\d+)", url)
+        if m:
+            gid = m.group(1)
+
+    m_id = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
+    default_mapping = {"iddesa": "D", "nama_usaha": "E", "link": "Z", "status": "AA"}
+    if not m_id:
+        return default_mapping
+    sheet_id = m_id.group(1)
+
+    params = urllib.parse.urlencode({
+        "tqx": "out:csv",
+        "tq": "limit 1",
+        "gid": gid,
+        "_t": str(int(time.time()))
+    })
+    gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
+
+    mapping = dict(default_mapping)
+    try:
+        req = urllib.request.Request(
+            gviz_url,
+            headers={"User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            content = resp.read().decode("utf-8")
+        lines = [l for l in content.splitlines() if l.strip()]
+        if lines:
+            reader = csv.reader(lines)
+            header = next(reader)
+
+            def idx_to_col(i):
+                if i < 26:
+                    return chr(ord('A') + i)
+                return chr(ord('A') + (i // 26) - 1) + chr(ord('A') + (i % 26))
+
+            for idx, col_name in enumerate(header):
+                cl = idx_to_col(idx)
+                c_low = col_name.strip().lower()
+                if "status" in c_low and any(k in c_low for k in ["pengerjaan", "remark", "selesai", "cleaning"]):
+                    mapping["status"] = cl
+                elif "link_fasih" in c_low or c_low == "link":
+                    mapping["link"] = cl
+                elif "nama_usaha" in c_low:
+                    mapping["nama_usaha"] = cl
+                elif "iddesa" in c_low:
+                    mapping["iddesa"] = cl
+    except Exception:
+        pass
+
+    SHEET_COL_CACHE[name] = mapping
+    return mapping
+
 def fetch_completed_from_spreadsheet(source_info):
     """
     Mengambil seluruh baris yang berstatus SELESAI / DONE / SUDAH langsung dari Google Sheets.
-    Menggunakan Google Visualization Query (GViz) super cepat dan bypass cache CDN.
+    Menggunakan deteksi kolom dinamis dan bypass cache CDN.
     """
     url = source_info.get("url", "")
     gid = source_info.get("gid", "0")
@@ -304,19 +371,24 @@ def fetch_completed_from_spreadsheet(source_info):
         return []
     sheet_id = m_id.group(1)
 
-    # Query GViz: ambil kolom D (iddesa), E (nama_usaha), Z (link_fasih), AA (Status Pengerjaan)
-    # yang Status Pengerjaan (AA) terisi.
-    tq = "select D, E, Z, AA where AA is not null"
-    params = urllib.parse.urlencode({
-        "tqx": "out:csv",
-        "tq": tq,
-        "gid": gid,
-        "_t": str(int(time.time()))
-    })
-    gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
+    cols = get_source_column_letters(source_info)
+    c_desa = cols.get("iddesa", "D")
+    c_nama = cols.get("nama_usaha", "E")
+    c_link = cols.get("link", "Z")
+    c_status = cols.get("status", "AA")
 
     completed_items = []
+
+    # 1. Coba GViz query dinamis
     try:
+        tq = f"select {c_desa}, {c_nama}, {c_link}, {c_status} where {c_status} is not null"
+        params = urllib.parse.urlencode({
+            "tqx": "out:csv",
+            "tq": tq,
+            "gid": gid,
+            "_t": str(int(time.time()))
+        })
+        gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
         req = urllib.request.Request(
             gviz_url,
             headers={
@@ -329,22 +401,24 @@ def fetch_completed_from_spreadsheet(source_info):
             content = resp.read().decode("utf-8")
             lines = [l for l in content.splitlines() if l.strip()]
             if len(lines) > 1:
-                reader = csv.DictReader(lines)
-                for r in reader:
-                    status = (r.get("Status Pengerjaan") or r.get("AA") or "").strip()
-                    st_up = status.upper()
-                    if any(x in st_up for x in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
-                        link = (r.get("link_fasih_sm") or r.get("Z") or "").strip()
-                        nama = (r.get("nama_usaha") or r.get("E") or "").strip()
-                        desa = (r.get("iddesa") or r.get("D") or "").strip()
-                        completed_items.append({
-                            "link": link,
-                            "nama_usaha": nama,
-                            "iddesa": desa,
-                            "status": status
-                        })
-    except Exception as e:
-        # Fallback: jika GViz terkendala, coba cek via Google Apps Script Web App jika ada
+                reader = csv.reader(lines)
+                next(reader)  # header
+                for row in reader:
+                    if len(row) >= 4:
+                        st = row[3].strip()
+                        st_up = st.upper()
+                        if any(x in st_up for x in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
+                            completed_items.append({
+                                "iddesa": row[0].strip(),
+                                "nama_usaha": row[1].strip(),
+                                "link": row[2].strip(),
+                                "status": st
+                            })
+    except Exception:
+        pass
+
+    # 2. Coba Google Apps Script Web App get_completed jika GViz tidak menemukan data atau gagal
+    if not completed_items:
         cfg = load_sync_config()
         urls_map = cfg.get("gas_webapp_urls", {})
         gas_url = ""
@@ -379,14 +453,31 @@ def fetch_completed_from_spreadsheet(source_info):
 def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True):
     """
     Menyinkronkan status pengerjaan dari Google Sheets ke cache lokal secara realtime:
-    1. Mengambil baris berstatus SELESAI dari Google Sheets (termasuk yang diselesaikan operator lain).
-    2. Mengupdate tanda 'is_sheet_done' & 'status_sheet' pada seluruh item raw_data in-memory.
-    3. Menambahkan item ke processed_cache dan menyimpannya ke processed_tambah_remark.json.
+    1. Memindai seluruh raw_data in-memory yang sudah terdeteksi selesai (is_sheet_done).
+    2. Mengambil data selesai terbaru dari Google Sheets via GViz & GAS Web App.
+    3. Memperbarui is_sheet_done pada raw_data dan menambahkan semua ke processed_cache.
+    4. Menyimpan processed_cache ke file JSON lokal agar sinkron permanen.
     """
     if verbose:
-        print("\n[SYNC SPREADSHEET] Menyinkronkan status pengerjaan terbaru dari Google Sheets secara realtime...")
+        print("\n[SYNC SPREADSHEET] Menyinkronkan status pengerjaan dari Google Sheets ke cache lokal...")
 
     total_synced_now = 0
+
+    # A. Masukkan semua item dari raw_data yang sudah terdeteksi selesai saat unduh sheet
+    for item in raw_data:
+        if item.get("is_sheet_done"):
+            link = item.get("link", "")
+            nama = item.get("nama_usaha", "")
+            if link and link not in processed_cache:
+                processed_cache.add(link)
+                total_synced_now += 1
+            if link and nama:
+                key = f"{link}::{nama}"
+                if key not in processed_cache:
+                    processed_cache.add(key)
+                    total_synced_now += 1
+
+    # B. Ambil data selesai live langsung dari sumber Google Sheets
     for s in chosen_sources:
         completed = fetch_completed_from_spreadsheet(s)
         for c in completed:
@@ -399,19 +490,17 @@ def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbo
             if clean_link and not clean_link.endswith("/edit"):
                 clean_link = clean_link + "/edit"
 
-            # Update cache set
             added = False
-            if clean_link:
-                if clean_link not in processed_cache:
-                    processed_cache.add(clean_link)
+            if clean_link and clean_link not in processed_cache:
+                processed_cache.add(clean_link)
+                added = True
+            if clean_link and nama:
+                key = f"{clean_link}::{nama}"
+                if key not in processed_cache:
+                    processed_cache.add(key)
                     added = True
-                if nama:
-                    key = f"{clean_link}::{nama}"
-                    if key not in processed_cache:
-                        processed_cache.add(key)
-                        added = True
 
-            # Update raw_data items
+            # Tandai is_sheet_done pada raw_data
             for item in raw_data:
                 item_link = item.get("link", "")
                 item_nama = item.get("nama_usaha", "")
@@ -430,14 +519,11 @@ def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbo
             if added:
                 total_synced_now += 1
 
-    # Simpan ke cache JSON file
+    # Simpan ke file cache JSON lokal
     save_cache(processed_cache)
 
     if verbose:
-        if total_synced_now > 0:
-            print(f" -> [SYNC OK] {total_synced_now} data baru yang selesai di Google Sheets berhasil disinkronkan ke cache JSON lokal.")
-        else:
-            print(" -> [SYNC OK] Cache JSON lokal sudah 100% sinkron dengan Google Spreadsheet.")
+        print(f" -> [SYNC OK] Total {len(processed_cache)} entri tersinkron di cache JSON lokal.")
 
     return total_synced_now
 
@@ -476,7 +562,11 @@ def check_assignment_status_live(item, chosen_sources):
         return False, ""
     sheet_id = m_id.group(1)
 
-    # Ekstrak UUID assignment dari link Fasih
+    cols = get_source_column_letters(target_source)
+    col_link = cols.get("link", "Z")
+    col_status = cols.get("status", "AA")
+    col_nama = cols.get("nama_usaha", "E")
+
     uuid = ""
     parts = link.rstrip("/").split("/")
     if len(parts) >= 1 and len(parts[-1]) >= 20:
@@ -484,9 +574,9 @@ def check_assignment_status_live(item, chosen_sources):
 
     escaped_nama = nama.replace("'", "\\'")
     if uuid:
-        tq = f"select AA where Z contains '{uuid}'"
+        tq = f"select {col_status} where {col_link} contains '{uuid}'"
     elif escaped_nama:
-        tq = f"select AA where E = '{escaped_nama}'"
+        tq = f"select {col_status} where {col_nama} = '{escaped_nama}'"
     else:
         return False, ""
 
@@ -520,7 +610,6 @@ def check_assignment_status_live(item, chosen_sources):
                         if any(d in val_up for d in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
                             return True, val
     except Exception:
-        # Jika GViz gagal/timeout, coba query ke Google Apps Script Web App jika tersedia
         cfg = load_sync_config()
         urls_map = cfg.get("gas_webapp_urls", {})
         gas_url = ""
@@ -567,9 +656,14 @@ def fetch_single_sheet(source_info):
     print(f"\n-> Menghubungkan ke '{name}'...")
     print(f"   URL: {url}")
 
+    req_url = url + ("&_t=" if "?" in url else "?_t=") + str(int(time.time()))
     req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        req_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+        }
     )
 
     content = None
@@ -2135,7 +2229,15 @@ def main():
     sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
 
     def is_done(it):
-        return (f"{it['link']}::{it['nama_usaha']}" in processed_cache) or (it["link"] in processed_cache)
+        if it.get("is_sheet_done"):
+            return True
+        link = it.get("link", "")
+        nama = it.get("nama_usaha", "")
+        if link in processed_cache or f"{link}::{nama}" in processed_cache:
+            return True
+        if link.rstrip("/edit") in processed_cache or (link.rstrip("/edit") + "/edit") in processed_cache:
+            return True
+        return False
 
     # 4. Filter Petugas Cleaning = 0 (sesuai instruksi)
     data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
