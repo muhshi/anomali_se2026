@@ -1,0 +1,66 @@
+===================================================================
+ PANDUAN PENGGUNAAN BOT TAMBAH REMARK 27.a FASIH-SM (SE2026)
+ [MULTI-OPERATOR & SINKRONISASI REALTIME GOOGLE SPREADSHEET]
+===================================================================
+
+Bot ini digunakan untuk mengotomatisasi penambahan catatan / remark '#0'
+pada Pertanyaan 27.a (Nilai produksi) di kuesioner Fasih-SM BPS.
+Data diambil secara LIVE langsung dari Google Spreadsheet BPS dan
+tersinkronisasi secara REALTIME antar operator/pengguna.
+
+FITUR BARU (MULTI-OPERATOR READY):
+1. Sinkronisasi Realtime Spreadsheet ke Cache:
+   Sebelum menampilkan pilihan menu Kecamatan, ID Desa, atau Batch,
+   bot otomatis mengecek Google Spreadsheet dan mengupdate file cache.
+   Daftar wilayah yang tersisa serta jumlah target selalu 100% akurat.
+2. Cek Status Realtime Tiap Assignment:
+   Saat bot berjalan, sebelum membuka assignment di browser, bot
+   selalu mengecek status baris tersebut di Google Spreadsheet. Jika
+   sudah diselesaikan oleh teman/operator lain, bot otomatis MELEWATINYA
+   (SKIP REALTIME) sehingga tidak ada pekerjaan ganda / tumpang tindih!
+3. Pewarnaan & Tanda Otomatis di Google Sheets:
+   Setiap assignment yang selesai otomatis diberi status 'SELESAI (Nama Anda)'
+   dan baris diwarnai hijau secara live di spreadsheet target.
+
+-------------------------------------------------------------------
+LANGKAH PENGGUNAAN:
+-------------------------------------------------------------------
+1. Ekstrak (Extract All) seluruh file zip ini ke folder di komputer Anda
+   (Misalnya di Desktop atau di D:\Bot-Remark).
+   *PENTING: Jangan menjalankan langsung dari dalam file zip!*
+
+2. Klik dua kali (Double-Click) pada file:
+   ==> run_tambah_remark.bat <==
+
+3. (Otomatis):
+   Jika di komputer Anda belum ada Python atau library Playwright, 
+   program installer akan otomatis mendownload dan menyiapkannya. 
+   Tunggu hingga browser Chromium terbuka.
+
+4. Masukkan Nama / Panggilan Anda di terminal saat diminta:
+   (Hanya ditanyakan saat pertama kali run, agar di spreadsheet Google Sheets
+   tercatat siapa yang mengerjakan baris tersebut).
+
+5. Login SSO di browser Fasih-SM:
+   - Login menggunakan akun SSO BPS Anda.
+   - Masuk sampai ke Dashboard Fasih-SM.
+   - Kembali ke jendela terminal hitam, lalu tekan tombol ENTER.
+
+6. Pilih Sumber Data & Filter Wilayah:
+   - Pilih sumber data:
+     [1] Prioritas 1: Data Detail Anomali (Default)
+     [2] Prioritas 2: Data NTB
+     [3] Gabungkan Semua Sheet
+   - Pilih Filter:
+     [1] Filter Berdasarkan Kecamatan (Auto-hide kecamatan yang sudah 100% selesai)
+     [2] Filter Berdasarkan ID Desa
+     [3] Filter Berdasarkan Batch
+     [0] Semua Data (Petugas Cleaning = 0)
+   - Bot otomatis menyinkronkan data Google Spreadsheet terbaru sebelum
+     menampilkan daftar sisa pekerjaan.
+
+7. Tekan ENTER dan bot akan bekerja secara otomatis!
+   Bot akan memproses satu per satu baris, mengecek status live spreadsheet,
+   menambahkan remark '#0', mengirim form, dan mengupdate status live.
+
+Selamat bekerja & terima kasih!

@@ -49,14 +49,8 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
-  var lock = LockService.getScriptLock();
-  // Kunci script selama max 30 detik agar antrean dari banyak PC aman tanpa tabrakan data
-  if (!lock.tryLock(30000)) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: "Server Google Sheets sedang sibuk, silakan coba lagi beberapa saat."
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
+  var lock = null;
+  var hasLock = false;
 
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -124,7 +118,7 @@ function handleRequest(e) {
       sheet = ss.getActiveSheet();
     }
 
-    // Ping / Test Endpoint
+    // A. Ping / Test Endpoint (Read-only, tanpa lock)
     if (params.action === "ping" || params.action === "test") {
       return ContentService.createTextOutput(JSON.stringify({
         status: "ok",
@@ -135,6 +129,127 @@ function handleRequest(e) {
         total_cols: sheet.getLastColumn()
       })).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // B. Ambil Header Kolom untuk Pencarian Status
+    var lastCol = sheet.getLastColumn();
+    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    var statusColIdx = -1;
+    var linkColIdx = -1;
+    var namaColIdx = -1;
+    var desaColIdx = -1;
+
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i] || "").trim().toLowerCase();
+      if (h === "status pengerjaan" || h === "status remark" || h === "status selesai") statusColIdx = i + 1;
+      if (h.includes("link_fasih") || h === "link") linkColIdx = i;
+      if (h.includes("nama_usaha")) namaColIdx = i;
+      if (h.includes("iddesa")) desaColIdx = i;
+    }
+
+    // C. Endpoint Cek Status 1 Assignment (Read-only, Realtime & Super Cepat)
+    if (params.action === "check_status") {
+      var targetLink = (params.link || params.link_fasih_sm || params.link_fasih || "").trim();
+      var targetNama = (params.nama_usaha || "").trim();
+      var rowNum = parseInt(params.row_num || 0);
+
+      if (statusColIdx === -1) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "ok",
+          is_done: false,
+          sheet_status: ""
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var data = sheet.getDataRange().getValues();
+      var targetRow = -1;
+
+      if (rowNum > 1 && rowNum <= data.length) {
+        if (linkColIdx !== -1 && targetLink) {
+          var cellLink = String(data[rowNum - 1][linkColIdx] || "").trim();
+          if (cellLink && (cellLink.includes(targetLink) || targetLink.includes(cellLink))) {
+            targetRow = rowNum;
+          }
+        } else {
+          targetRow = rowNum;
+        }
+      }
+
+      if (targetRow === -1 && linkColIdx !== -1 && targetLink) {
+        var cleanTarget = targetLink.split("?")[0].replace(/\/edit\/?$/, "").trim();
+        for (var r = 1; r < data.length; r++) {
+          var cLink = String(data[r][linkColIdx] || "").split("?")[0].replace(/\/edit\/?$/, "").trim();
+          if (cLink && (cLink === cleanTarget || cLink.includes(cleanTarget) || cleanTarget.includes(cLink))) {
+            targetRow = r + 1;
+            break;
+          }
+        }
+      }
+
+      if (targetRow === -1 && targetNama && namaColIdx !== -1) {
+        for (var rn = 1; rn < data.length; rn++) {
+          if (String(data[rn][namaColIdx] || "").trim().toLowerCase() === targetNama.toLowerCase()) {
+            targetRow = rn + 1;
+            break;
+          }
+        }
+      }
+
+      if (targetRow > 1) {
+        var currentStatus = String(data[targetRow - 1][statusColIdx - 1] || "").trim();
+        var stUpper = currentStatus.toUpperCase();
+        var isDone = (stUpper.includes("SELESAI") || stUpper.includes("DONE") || stUpper.includes("SUDAH") || stUpper.includes("BERHASIL") || stUpper.includes("DILEWATI"));
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "ok",
+          is_done: isDone,
+          sheet_status: currentStatus,
+          row: targetRow
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "ok",
+        is_done: false,
+        sheet_status: ""
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // D. Endpoint Ambil Seluruh Data yang Selesai (Read-only, Sinkronisasi Awal/Menu)
+    if (params.action === "get_completed") {
+      var completedList = [];
+      if (statusColIdx !== -1) {
+        var data = sheet.getDataRange().getValues();
+        for (var r = 1; r < data.length; r++) {
+          var st = String(data[r][statusColIdx - 1] || "").trim();
+          var stUpper = st.toUpperCase();
+          if (stUpper.includes("SELESAI") || stUpper.includes("DONE") || stUpper.includes("SUDAH") || stUpper.includes("BERHASIL") || stUpper.includes("DILEWATI")) {
+            completedList.push({
+              link: linkColIdx !== -1 ? String(data[r][linkColIdx] || "") : "",
+              nama_usaha: namaColIdx !== -1 ? String(data[r][namaColIdx] || "") : "",
+              iddesa: desaColIdx !== -1 ? String(data[r][desaColIdx] || "") : "",
+              status: st,
+              row: r + 1
+            });
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "ok",
+        count: completedList.length,
+        items: completedList
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ==========================================================================
+    // OPERASI WRITE / UPDATE STATUS KE GOOGLE SHEETS (DILINDUNGI SCRIPT LOCK)
+    // ==========================================================================
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error",
+        message: "Server Google Sheets sedang sibuk melayani pembaruan lain, silakan coba lagi beberapa saat."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    hasLock = true;
 
     var targetLink = (params.link || params.link_fasih_sm || params.link_fasih || "").trim();
     var targetNama = (params.nama_usaha || "").trim();
@@ -253,6 +368,10 @@ function handleRequest(e) {
       message: err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   } finally {
-    lock.releaseLock();
+    if (hasLock && lock) {
+      try {
+        lock.releaseLock();
+      } catch (e) {}
+    }
   }
 }

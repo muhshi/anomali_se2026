@@ -65,12 +65,14 @@ SHEET_SOURCES = [
         "id": "1",
         "name": "Prioritas 1: Data Detail Anomali (gid: 0)",
         "url": "https://docs.google.com/spreadsheets/d/12FWSyYak-scXS5skHFUSQbVkjy6Oh8ofejusqnOb5nA/export?format=csv&gid=0",
+        "gid": "0",
         "backup_filename": "data_detail_anomali_backup.csv"
     },
     {
         "id": "2",
         "name": "Prioritas 2: Data NTB (gid: 293925488)",
         "url": "https://docs.google.com/spreadsheets/d/1ra-HZlqn1md8AIYaZz5VmOg-5Dxj83LYOHrmChvyz0s/export?format=csv&gid=293925488",
+        "gid": "293925488",
         "backup_filename": "dtata_ntb_backup.csv"
     }
 ]
@@ -280,6 +282,277 @@ def save_report_data(report_list):
         wb.save(REPORT_EXCEL)
     except Exception as e:
         print(f"[Warning] Gagal memperbarui file Excel laporan: {e}")
+
+# ==============================================================================
+# SINKRONISASI REALTIME CACHE & CEK STATUS GOOGLE SHEETS
+# ==============================================================================
+
+def fetch_completed_from_spreadsheet(source_info):
+    """
+    Mengambil seluruh baris yang berstatus SELESAI / DONE / SUDAH langsung dari Google Sheets.
+    Menggunakan Google Visualization Query (GViz) super cepat dan bypass cache CDN.
+    """
+    url = source_info.get("url", "")
+    gid = source_info.get("gid", "0")
+    if "gid=" in url:
+        m = re.search(r"gid=(\d+)", url)
+        if m:
+            gid = m.group(1)
+
+    m_id = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
+    if not m_id:
+        return []
+    sheet_id = m_id.group(1)
+
+    # Query GViz: ambil kolom D (iddesa), E (nama_usaha), Z (link_fasih), AA (Status Pengerjaan)
+    # yang Status Pengerjaan (AA) terisi.
+    tq = "select D, E, Z, AA where AA is not null"
+    params = urllib.parse.urlencode({
+        "tqx": "out:csv",
+        "tq": tq,
+        "gid": gid,
+        "_t": str(int(time.time()))
+    })
+    gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
+
+    completed_items = []
+    try:
+        req = urllib.request.Request(
+            gviz_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            content = resp.read().decode("utf-8")
+            lines = [l for l in content.splitlines() if l.strip()]
+            if len(lines) > 1:
+                reader = csv.DictReader(lines)
+                for r in reader:
+                    status = (r.get("Status Pengerjaan") or r.get("AA") or "").strip()
+                    st_up = status.upper()
+                    if any(x in st_up for x in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
+                        link = (r.get("link_fasih_sm") or r.get("Z") or "").strip()
+                        nama = (r.get("nama_usaha") or r.get("E") or "").strip()
+                        desa = (r.get("iddesa") or r.get("D") or "").strip()
+                        completed_items.append({
+                            "link": link,
+                            "nama_usaha": nama,
+                            "iddesa": desa,
+                            "status": status
+                        })
+    except Exception as e:
+        # Fallback: jika GViz terkendala, coba cek via Google Apps Script Web App jika ada
+        cfg = load_sync_config()
+        urls_map = cfg.get("gas_webapp_urls", {})
+        gas_url = ""
+        for k, u in urls_map.items():
+            if u and (k.lower() in source_info["name"].lower() or source_info["name"].lower() in k.lower()):
+                gas_url = u.strip()
+                break
+        if not gas_url:
+            gas_url = (cfg.get("gas_webapp_url") or "").strip()
+
+        if gas_url:
+            try:
+                g_req = urllib.request.Request(
+                    f"{gas_url}?action=get_completed&gid={gid}&_t={int(time.time())}",
+                    headers={"User-Agent": "Mozilla/5.0"}
+                )
+                with urllib.request.urlopen(g_req, timeout=12) as g_resp:
+                    g_data = json.loads(g_resp.read().decode("utf-8"))
+                    if g_data.get("status") == "ok":
+                        for it in g_data.get("items", []):
+                            completed_items.append({
+                                "link": it.get("link", ""),
+                                "nama_usaha": it.get("nama_usaha", ""),
+                                "iddesa": it.get("iddesa", ""),
+                                "status": it.get("status", "SELESAI")
+                            })
+            except Exception:
+                pass
+
+    return completed_items
+
+def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True):
+    """
+    Menyinkronkan status pengerjaan dari Google Sheets ke cache lokal secara realtime:
+    1. Mengambil baris berstatus SELESAI dari Google Sheets (termasuk yang diselesaikan operator lain).
+    2. Mengupdate tanda 'is_sheet_done' & 'status_sheet' pada seluruh item raw_data in-memory.
+    3. Menambahkan item ke processed_cache dan menyimpannya ke processed_tambah_remark.json.
+    """
+    if verbose:
+        print("\n[SYNC SPREADSHEET] Menyinkronkan status pengerjaan terbaru dari Google Sheets secara realtime...")
+
+    total_synced_now = 0
+    for s in chosen_sources:
+        completed = fetch_completed_from_spreadsheet(s)
+        for c in completed:
+            link = c.get("link", "")
+            nama = c.get("nama_usaha", "")
+            desa = c.get("iddesa", "")
+            status = c.get("status", "SELESAI")
+
+            clean_link = link.split("?")[0].rstrip("/")
+            if clean_link and not clean_link.endswith("/edit"):
+                clean_link = clean_link + "/edit"
+
+            # Update cache set
+            added = False
+            if clean_link:
+                if clean_link not in processed_cache:
+                    processed_cache.add(clean_link)
+                    added = True
+                if nama:
+                    key = f"{clean_link}::{nama}"
+                    if key not in processed_cache:
+                        processed_cache.add(key)
+                        added = True
+
+            # Update raw_data items
+            for item in raw_data:
+                item_link = item.get("link", "")
+                item_nama = item.get("nama_usaha", "")
+                item_desa = item.get("iddesa", "")
+
+                is_match = False
+                if clean_link and item_link and (clean_link in item_link or item_link in clean_link):
+                    is_match = True
+                elif nama and item_nama and nama.lower() == item_nama.lower() and (not desa or not item_desa or desa == item_desa):
+                    is_match = True
+
+                if is_match:
+                    item["is_sheet_done"] = True
+                    item["status_sheet"] = status
+
+            if added:
+                total_synced_now += 1
+
+    # Simpan ke cache JSON file
+    save_cache(processed_cache)
+
+    if verbose:
+        if total_synced_now > 0:
+            print(f" -> [SYNC OK] {total_synced_now} data baru yang selesai di Google Sheets berhasil disinkronkan ke cache JSON lokal.")
+        else:
+            print(" -> [SYNC OK] Cache JSON lokal sudah 100% sinkron dengan Google Spreadsheet.")
+
+    return total_synced_now
+
+def check_assignment_status_live(item, chosen_sources):
+    """
+    Memeriksa status pengerjaan satu assignment secara realtime langsung ke Google Sheets.
+    Dipanggil tepat sebelum membuka/memproses assignment di browser Fasih-SM.
+    Jika assignment sudah berstatus SELESAI di Spreadsheet (dikerjakan operator lain),
+    fungsi ini mengembalikan (True, status_text) sehingga bot bisa langsung melewatinya (skip).
+    """
+    link = item.get("link", "")
+    nama = item.get("nama_usaha", "")
+    src_name = item.get("source_name", "")
+
+    # 1. Cari source sheet yang sesuai
+    target_source = None
+    for s in chosen_sources:
+        if s["name"].lower() in src_name.lower() or src_name.lower() in s["name"].lower():
+            target_source = s
+            break
+    if not target_source and chosen_sources:
+        target_source = chosen_sources[0]
+
+    if not target_source:
+        return False, ""
+
+    url = target_source.get("url", "")
+    gid = target_source.get("gid", "0")
+    if "gid=" in url:
+        m = re.search(r"gid=(\d+)", url)
+        if m:
+            gid = m.group(1)
+
+    m_id = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
+    if not m_id:
+        return False, ""
+    sheet_id = m_id.group(1)
+
+    # Ekstrak UUID assignment dari link Fasih
+    uuid = ""
+    parts = link.rstrip("/").split("/")
+    if len(parts) >= 1 and len(parts[-1]) >= 20:
+        uuid = parts[-1]
+
+    escaped_nama = nama.replace("'", "\\'")
+    if uuid:
+        tq = f"select AA where Z contains '{uuid}'"
+    elif escaped_nama:
+        tq = f"select AA where E = '{escaped_nama}'"
+    else:
+        return False, ""
+
+    params = urllib.parse.urlencode({
+        "tqx": "out:csv",
+        "tq": tq,
+        "gid": gid,
+        "_t": str(int(time.time()))
+    })
+    gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
+
+    try:
+        req = urllib.request.Request(
+            gviz_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            content = resp.read().decode("utf-8")
+            lines = [l for l in content.splitlines() if l.strip()]
+            if len(lines) > 1:
+                reader = csv.reader(lines)
+                next(reader)  # skip header
+                for row in reader:
+                    if row and row[0].strip():
+                        val = row[0].strip()
+                        val_up = val.upper()
+                        if any(d in val_up for d in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
+                            return True, val
+    except Exception:
+        # Jika GViz gagal/timeout, coba query ke Google Apps Script Web App jika tersedia
+        cfg = load_sync_config()
+        urls_map = cfg.get("gas_webapp_urls", {})
+        gas_url = ""
+        for k, u in urls_map.items():
+            if u and (k.lower() in src_name.lower() or src_name.lower() in k.lower()):
+                gas_url = u.strip()
+                break
+        if not gas_url:
+            gas_url = (cfg.get("gas_webapp_url") or "").strip()
+
+        if gas_url:
+            try:
+                check_params = urllib.parse.urlencode({
+                    "action": "check_status",
+                    "link": link,
+                    "nama_usaha": nama,
+                    "row_num": item.get("row_num", ""),
+                    "gid": gid,
+                    "_t": str(int(time.time()))
+                })
+                g_req = urllib.request.Request(
+                    f"{gas_url}?{check_params}",
+                    headers={"User-Agent": "Mozilla/5.0"}
+                )
+                with urllib.request.urlopen(g_req, timeout=5) as g_resp:
+                    res = json.loads(g_resp.read().decode("utf-8"))
+                    if res.get("is_done"):
+                        return True, res.get("sheet_status", "SELESAI")
+            except Exception:
+                pass
+
+    return False, ""
 
 # ==============================================================================
 # FETCH DATA GOOGLE SHEETS
@@ -1859,18 +2132,7 @@ def main():
 
     # 3. Sinkronkan Cache Progres (Offline JSON + Live Google Sheet)
     processed_cache = load_cache()
-    sheet_completed_count = 0
-    for d in raw_data:
-        if d.get("is_sheet_done"):
-            cache_key = f"{d['link']}::{d['nama_usaha']}"
-            if cache_key not in processed_cache and d["link"] not in processed_cache:
-                processed_cache.add(cache_key)
-                processed_cache.add(d["link"])
-                sheet_completed_count += 1
-
-    if sheet_completed_count > 0:
-        save_cache(processed_cache)
-        print(f" -> {sheet_completed_count} data terdeteksi SUDAH SELESAI dari Google Sheet dan disinkronkan ke cache lokal.")
+    sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
 
     def is_done(it):
         return (f"{it['link']}::{it['nama_usaha']}" in processed_cache) or (it["link"] in processed_cache)
@@ -1891,6 +2153,10 @@ def main():
     active_data = data_cleaning_0
 
     if filter_choice == "1":
+        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar kecamatan
+        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
         # Grouping berdasarkan Kecamatan (idkec)
         all_idkecs = sorted(list(set(d["idkec"] for d in data_cleaning_0 if d.get("idkec"))))
         unfinished_kecs = []
@@ -1926,7 +2192,11 @@ def main():
         kec_input = input(f"\nPilih nomor Kecamatan [1-{len(unfinished_kecs)}]: ").strip()
         if kec_input.isdigit() and 1 <= int(kec_input) <= len(unfinished_kecs):
             sel_kec = unfinished_kecs[int(kec_input) - 1]
-            kec_items = sel_kec["items"]
+
+            # Sinkronkan kembali sebelum menampilkan daftar desa di dalam kecamatan terpilih
+            sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
+            data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+            kec_items = [d for d in data_cleaning_0 if d.get("idkec") == sel_kec["idkec"]]
 
             # Deteksi desa yang belum selesai di dalam kecamatan terpilih
             all_desas_in_kec = sorted(list(set(d["iddesa"] for d in kec_items if d.get("iddesa"))))
@@ -1965,6 +2235,10 @@ def main():
                 print(f"-> Filter aktif: Kecamatan {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
 
     elif filter_choice == "2":
+        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar ID desa
+        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
         # Grouping berdasarkan ID Desa
         all_desas = sorted(list(set(d["iddesa"] for d in data_cleaning_0 if d.get("iddesa"))))
         unfinished_desas = []
@@ -2011,6 +2285,10 @@ def main():
             print(f"-> Filter aktif: {selected_desa['label']} ({len(active_data)} data)")
 
     elif filter_choice == "3":
+        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar batch
+        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
         # Grouping berdasarkan Batch
         all_batches = sorted(list(set(d["batch_info"] for d in data_cleaning_0 if d.get("batch_info"))))
         unfinished_batches = []
@@ -2044,9 +2322,13 @@ def main():
             print(f"-> Filter aktif: Batch '{selected_batch['batch_info']}' ({len(active_data)} data)")
 
     elif filter_choice == "4":
+        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
         active_data = raw_data
         print(f"-> Memproses SEMUA data tanpa filter Petugas Cleaning ({len(active_data)} data).")
     else:
+        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+        active_data = data_cleaning_0
         print(f"-> Memproses SEMUA data Petugas Cleaning = 0 ({len(active_data)} data).")
 
     # 6. Ringkasan Pengerjaan
@@ -2101,9 +2383,23 @@ def main():
             src_name = item.get("source_name", "")
             cache_key = f"{link}::{nama}"
 
+            # 1. Cek cache offline terlebih dahulu (instan 0ms)
             if cache_key in processed_cache or link in processed_cache:
-                print(f"[{idx}/{total_target}] [{kec} | {desa}] SKIP (Sudah diproses): {nama}")
+                print(f"[{idx}/{total_target}] [{kec} | {desa}] SKIP (Sudah di cache lokal): {nama}")
                 continue
+
+            # 2. Cek status realtime di Spreadsheet (apakah baru saja diselesaikan operator lain)
+            print(f"[{idx}/{total_target}] [{kec} | {desa}] Cek status live di Spreadsheet: {nama}...", end=" ", flush=True)
+            is_done_live, live_status = check_assignment_status_live(item, chosen_sources)
+            if is_done_live:
+                print(f"[SKIP REALTIME - SUDAH SELESAI ({live_status})]")
+                processed_cache.add(cache_key)
+                processed_cache.add(link)
+                save_cache(processed_cache)
+                skip_count += 1
+                continue
+            else:
+                print("[BELUM SELESAI - LANJUT]")
 
             while True:
                 print(f"\n[{idx}/{total_target}] [{src_name}] [{kec} | {desa}] Memproses: {nama}")

@@ -52,6 +52,21 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-10-22
+- **Sinkronisasi Realtime Google Spreadsheet Sebelum List Wilayah (`tambah_remark_27a.py`)**:
+  - Sebelum menampilkan daftar Kecamatan, ID Desa, Batch, maupun Semua Data di terminal, bot otomatis mengambil status pengerjaan terbaru (`Status Pengerjaan`) dari Google Spreadsheet secara realtime menggunakan query berkecepatan tinggi dengan bypass cache CDN (`_t=timestamp`).
+  - Mengupdate status `raw_data` in-memory dan memperbarui file cache JSON lokal (`processed_tambah_remark.json`) secara instan, sehingga cache lokal selalu sinkron dengan apa yang dikerjakan oleh operator lain di Google Spreadsheet.
+  - Jumlah sisa data dan filter auto-hide pada daftar kecamatan dan desa selalu 100% akurat dan realtime.
+- **Pengecekan Status Realtime Tiap Assignment Sebelum Dijalankan (`tambah_remark_27a.py`)**:
+  - Di dalam loop eksekusi, tepat sebelum membuka link assignment di browser Fasih-SM, bot melakukan verifikasi live langsung ke Google Spreadsheet.
+  - Jika assignment sudah selesai dikerjakan oleh operator/rekan lain (status `SELESAI`, `DONE`, `SUDAH`, dsb), bot otomatis melewatinya (`[SKIP REALTIME]`), menambahkan ke cache lokal, dan langsung melompat ke assignment berikutnya.
+  - Mencegah duplikasi pengerjaan / tabrakan antar pengguna saat banyak orang menjalankan bot bersamaan.
+- **Optimasi Google Apps Script Sync v3 (`google_apps_script_sync.js`)**:
+  - Menambahkan dukungan request cepat `check_status` dan `get_completed`.
+  - Operasi read-only kini tidak mengunci script lock (`lock.tryLock`) sehingga pengecekan status berlangsung non-blocking dan instan dari banyak PC sekaligus. Operasi penulisan status dan pewarnaan hijau tetap terlindungi ScriptLock.
+- **Pembaruan Paket Zip Distribusi (`Bot-Tambah-Remark-SE2026.zip`) & Panduan Multi-Operator**:
+  - Mengemas ulang seluruh kode utama, launcher, script sinkronisasi, template konfigurasi operator, dan panduan penggunaan ke dalam file zip mandiri `Bot-Tambah-Remark-SE2026.zip` yang siap dibagikan ke rekan-rekan kerja.
+
 ### 2026-10-21
 - **Paket Distribusi Siap Pakai untuk Rekan Kerja (`Bot-Tambah-Remark-SE2026.zip`)**:
   - Membuat bundle zip mandiri khusus bot tambah remark yang siap dibagikan ke rekan kerja.
