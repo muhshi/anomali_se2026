@@ -53,6 +53,9 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Update Utilitas Push Histori & Paket Distribusi (`push_local_cache_to_sheets.py`, `Bot-Tambah-Remark-SE2026.zip`)**:
+  - Menambahkan konfigurasi `sys.stdout.reconfigure(encoding='utf-8')` pada Windows console di `push_local_cache_to_sheets.py` agar aman dari error encoding karakter emoji pada nama tab Google Spreadsheet.
+  - Mengemas ulang arsip `Bot-Tambah-Remark-SE2026.zip` dengan kode termutakhir dan template konfigurasi siap pakai (`operator_name` kosong) untuk dibagikan ke rekan operator.
 - **Fix URL Routing Multi-Spreadsheet Live Sync (`tambah_remark_27a.py`)**:
   - Memperbaiki bug perutean URL Web App pada `sync_to_google_sheet`: sebelumnya penulisan status selesai untuk Prioritas 2 (Data NTB / Karangawen) terkirim ke spreadsheet yang salah karena pencocokan nama ("Dtata_NTB" vs "Prioritas 2: Data NTB") tidak cocok dan jatuh ke fallback Prioritas 1.
   - Mengimplementasikan fungsi `resolve_gas_url_for_item` yang cerdas untuk memetakan nama sumber, parameter gid, dan alias spreadsheet target ke URL Web App yang tepat secara akurat.

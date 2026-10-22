@@ -28,6 +28,11 @@ def load_json(filepath):
     return None
 
 def main():
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     print("=" * 65)
     print(" SINKRONISASI HISTORI PENGERJAAN LOKAL KE GOOGLE SHEETS")
     print("=" * 65)
