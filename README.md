@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Optimasi Kecepatan Eksekusi Bot 2x-3x Lebih Cepat (`tambah_remark_27a.py`)**:
+  - Memangkas jeda waktu tidur buatan (*idle sleep*) pada seluruh alur pengerjaan assignment (buka menu Blok II, buka rincian usaha, pencarian scroll pertanyaan 27.a, input remark #0, simpan catatan, buka menu Catatan, toggle switch anomali, submit konfirmasi, hingga jeda antar-assignment).
+  - Mengurangi total delay menganggur dari ~35+ detik menjadi hanya ~8–10 detik per assignment tanpa mengorbankan stabilitas interaksi Playwright.
+  - Mempercepat interval polling kesiapan kuesioner dan feedback submit agar bot langsung merespons begitu server Fasih-SM selesai memproses data.
 - **Fix False-Alarm Sesi Terputus & Eliminasi Jeda Login Ulang (`tambah_remark_27a.py`)**:
   - Memperbaiki bug false-positive "Error koneksi / halaman blank: halaman kosong (blank)" yang kerap muncul setiap beberapa assignment dan memaksa bot berhenti meminta tekan ENTER.
   - Masalah terjadi karena Fasih-SM merupakan Single Page Application (SPA), di mana teks `document.body` belum selesai di-render oleh JavaScript sesaat setelah event `DOMContentLoaded`. Pengecekan blank prematur ini kini telah dihapus dari fungsi validasi koneksi.

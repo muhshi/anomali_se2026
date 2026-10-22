@@ -1145,7 +1145,7 @@ def open_menu_blok_ii(page):
     """
     Membuka menu 'SE2026 - L BLOK II' (KETERANGAN USAHA/PERUSAHAAN) di sidebar.
     """
-    time.sleep(1.0)
+    time.sleep(0.3)
 
     for attempt in range(5):
         # 1. Coba klik langsung tab / tombol dengan Playwright locator di sidebar
@@ -1157,7 +1157,7 @@ def open_menu_blok_ii(page):
                 tab_locator.scroll_into_view_if_needed(timeout=2000)
                 tab_locator.click(timeout=3000, force=True)
                 print("     [OK] Menu 'BLOK II' diklik via Playwright locator.")
-                time.sleep(2.0)
+                time.sleep(0.6)
                 return True
         except Exception:
             pass
@@ -1218,14 +1218,14 @@ def open_menu_blok_ii(page):
 
         if res and res.get("success"):
             print(f"     [OK] Berhasil membuka menu: '{res.get('menu')}'")
-            time.sleep(2.0)
+            time.sleep(0.6)
             return True
         elif res and res.get("need_wait"):
             print(f"     -> Mengklik 'SE2026 - L' untuk menampilkan sub-menu ('{res.get('menu')}')...")
-            time.sleep(1.5)
+            time.sleep(0.5)
             continue
         else:
-            time.sleep(1.0)
+            time.sleep(0.4)
 
     return False
 
@@ -1233,7 +1233,7 @@ def select_or_open_usaha(page, target_nama_usaha):
     """
     Mencari kartu usaha / baris tabel yang cocok dengan nama usaha lalu mengklik tombol 'Lihat Rincian'.
     """
-    time.sleep(1.0)
+    time.sleep(0.3)
     clean_target = (target_nama_usaha or "").strip()
     print(f"  -> Mencari dan membuka rincian usaha: '{clean_target}' (Lihat Rincian)...")
 
@@ -1328,7 +1328,7 @@ def select_or_open_usaha(page, target_nama_usaha):
         except Exception:
             pass
 
-    time.sleep(1.0)
+    time.sleep(0.3)
 
     # Pastikan form / modal benar-benar ter-mount sebelum melanjutkan
     for _ in range(15):
@@ -1340,9 +1340,9 @@ def select_or_open_usaha(page, target_nama_usaha):
         }''')
         if form_ready:
             break
-        time.sleep(1.0)
+        time.sleep(0.3)
 
-    time.sleep(1.5)
+    time.sleep(0.4)
     return True
 
 # ==============================================================================
@@ -1364,7 +1364,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     8. Mengklik Simpan di form rincian jika ada.
     """
     print(f"  -> Mencari pertanyaan '27. a' dan mengklik tombol Catatan...")
-    time.sleep(1.0)
+    time.sleep(0.3)
 
     # ==========================================================================
     # TAHAP 1: SCANNING SCROLL KE BAWAH SAMPAI PERTANYAAN 27.a DITEMUKAN
@@ -1387,7 +1387,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 });
                 scrollables.forEach(s => s.scrollTop = 0);
             }''')
-            time.sleep(1.0)
+            time.sleep(0.3)
 
         for scan_step in range(1, 36):
             # Cek apakah elemen 27.a sudah termuat di DOM
@@ -1434,7 +1434,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 found_27a = True
                 q_text_found = res_search.get("text", "")
                 print(f"     [OK] Pertanyaan 27.a ditemukan (Langkah {scan_step}): '{q_text_found}'")
-                time.sleep(1.0)
+                time.sleep(0.4)
                 break
 
             # Scroll ke bawah baik window maupun kontainer modal rincian
@@ -1448,7 +1448,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                     s.scrollTop += 800;
                 });
             }''')
-            time.sleep(0.3)
+            time.sleep(0.1)
 
     if not found_27a:
         print("     [GAGAL] Pertanyaan 27.a Nilai Produksi tidak dapat ditemukan di halaman ini!")
@@ -1567,13 +1567,13 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             print(f"     [OK] Tombol Catatan 27.a berhasil diklik ({res_click.get('method')}, selisih vertikal: {res_click.get('dist', 0):.0f}px).")
             break
 
-        time.sleep(1.0)
+        time.sleep(0.3)
 
     if not btn_opened:
         print("     [GAGAL] Tombol Catatan khusus pertanyaan 27.a tidak ditemukan.")
         return False, "Tombol Catatan pertanyaan 27.a tidak ditemukan"
 
-    time.sleep(1.2)
+    time.sleep(0.4)
 
     # ==========================================================================
     # TAHAP 3: MENGISIKAN TEKS REMARK '#0'
@@ -1638,7 +1638,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     else:
         print("     [Warning] Field input/textarea catatan tidak ditemukan.")
 
-    time.sleep(0.8)
+    time.sleep(0.3)
 
     # ==========================================================================
     # TAHAP 4: MENYIMPAN CATATAN
@@ -1717,7 +1717,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             pass
 
     # Jeda singkat agar simpan catatan selesai dikirim
-    time.sleep(1.0)
+    time.sleep(0.4)
 
     # ==========================================================================
     # TAHAP 5: VERIFIKASI CATATAN TERTERA & MENUTUP DIALOG CATATAN
@@ -1738,13 +1738,13 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
         ).first
         if close_btn.count() > 0 and close_btn.is_visible():
             close_btn.click(timeout=2000, force=True)
-            time.sleep(0.5)
+            time.sleep(0.2)
     except Exception:
         pass
 
     try:
         page.keyboard.press("Escape")
-        time.sleep(0.5)
+        time.sleep(0.2)
     except Exception:
         pass
 
@@ -1770,7 +1770,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
         }''')
         if res_modal_save and res_modal_save.get("success"):
             print(f"     [OK] Tombol simpan rincian '{res_modal_save.get('text')}' diklik.")
-            time.sleep(1.5)
+            time.sleep(0.5)
     except Exception:
         pass
 
@@ -1786,7 +1786,7 @@ def open_menu_catatan(page):
     for attempt in range(3):
         try:
             page.get_by_role("tab", name=re.compile(r"Catatan", re.IGNORECASE)).click(timeout=3000)
-            time.sleep(1.5)
+            time.sleep(0.4)
             return True
         except Exception:
             pass
@@ -1795,7 +1795,7 @@ def open_menu_catatan(page):
             catatan_btn = page.locator("a, button, [role='tab'], li").filter(has_text=re.compile(r"^Catatan$", re.IGNORECASE)).first
             if catatan_btn.is_visible():
                 catatan_btn.click(timeout=3000)
-                time.sleep(1.5)
+                time.sleep(0.4)
                 return True
         except Exception:
             pass
@@ -1816,9 +1816,9 @@ def open_menu_catatan(page):
             return false;
         }''')
         if res:
-            time.sleep(1.5)
+            time.sleep(0.4)
             return True
-        time.sleep(1.0)
+        time.sleep(0.3)
 
     print("     [Warning] Menu 'Catatan' tidak terdeteksi langsung.")
     return False
@@ -1834,7 +1834,7 @@ def ensure_tampilkan_anomali_checked(page):
         <div id="switch-...-control" class="... tw:cursor-pointer ... tw:data-checked:bg-primary ...">
     """
     print("  -> Memeriksa switch 'Tampilkan Anomali Usaha dan Keluarga'...")
-    time.sleep(1.0)
+    time.sleep(0.3)
     for attempt in range(3):
         res = page.evaluate('''() => {
             function getCleanText(el) {
@@ -1898,9 +1898,9 @@ def ensure_tampilkan_anomali_checked(page):
                 print("     [OK] Switch 'Tampilkan Anomali Usaha dan Keluarga' sudah bernilai TRUE (tercentang).")
             else:
                 print("     [OK] Berhasil mengaktifkan switch 'Tampilkan Anomali Usaha dan Keluarga' (TRUE).")
-            time.sleep(1.0)
+            time.sleep(0.3)
             return True
-        time.sleep(1.0)
+        time.sleep(0.3)
 
     try:
         # Fallback Playwright
@@ -1908,7 +1908,7 @@ def ensure_tampilkan_anomali_checked(page):
         if switch_control.count() > 0:
             switch_control.click(force=True)
             print("     [OK] Switch 'Tampilkan Anomali' diaktifkan via Playwright fallback.")
-            time.sleep(1.0)
+            time.sleep(0.3)
             return True
     except Exception:
         pass
@@ -1927,12 +1927,12 @@ def wait_for_submit_finish(page, max_wait=45):
     start_time = time.time()
     reported = False
 
-    # Jeda awal 1.5 detik agar browser memicu request submit ke server
-    time.sleep(1.5)
+    # Jeda awal 0.5 detik agar browser memicu request submit ke server
+    time.sleep(0.5)
 
     # Tunggu aktivitas network mereda jika ada request aktif
     try:
-        page.wait_for_load_state("networkidle", timeout=8000)
+        page.wait_for_load_state("networkidle", timeout=5000)
     except Exception:
         pass
 
@@ -1943,7 +1943,7 @@ def wait_for_submit_finish(page, max_wait=45):
             if "/edit" not in current_url:
                 elapsed = time.time() - start_time
                 print(f"     [OK] Kuesioner berhasil dikirim & dialihkan ke '{current_url}' dalam {elapsed:.1f} detik.")
-                time.sleep(1.5)
+                time.sleep(0.5)
                 return True, "Sukses dikirim (redirect)"
 
             res = page.evaluate('''() => {
@@ -2018,7 +2018,7 @@ def wait_for_submit_finish(page, max_wait=45):
             if res.get("status") == "success":
                 elapsed = time.time() - start_time
                 print(f"     [OK] Feedback pengiriman kuesioner berhasil terkonfirmasi dalam {elapsed:.1f} detik.")
-                time.sleep(1.5)
+                time.sleep(0.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
             # Jika masih loading / submit sedang berlangsung, jangan pernah return!
@@ -2026,30 +2026,30 @@ def wait_for_submit_finish(page, max_wait=45):
                 if not reported:
                     print("  -> [Loading] Server sedang memproses pengiriman kuesioner, mohon tunggu feedback...")
                     reported = True
-                time.sleep(1.0)
+                time.sleep(0.5)
                 continue
 
             # Jika loading spinner sudah hilang dan dialog sudah tertutup,
-            # pastikan menunggu minimal 5 detik agar toast/redirect sempat muncul
+            # pastikan menunggu minimal 3 detik agar toast/redirect sempat muncul
             elapsed = time.time() - start_time
-            if elapsed >= 5.0 and not res.get("isSubmitting"):
+            if elapsed >= 3.0 and not res.get("isSubmitting"):
                 print(f"     [OK] Pengiriman kuesioner ke server selesai dalam {elapsed:.1f} detik.")
-                time.sleep(1.5)
+                time.sleep(0.5)
                 return True, "Berhasil dikirim dan dikonfirmasi"
 
-            time.sleep(0.8)
+            time.sleep(0.4)
         except Exception:
-            time.sleep(0.8)
+            time.sleep(0.4)
 
     print(f"     [OK] Waktu proses kirim mencapai batas {max_wait} detik, formulir terkirim.")
-    time.sleep(1.5)
+    time.sleep(0.5)
     return True, "Berhasil dikirim dan dikonfirmasi"
 
 def click_kirim_and_confirm(page):
     """
     Mengklik tombol 'Kirim' / 'Submit' dan menyelesaikan konfirmasi modal bertingkat (konfirm 2x).
     """
-    time.sleep(1.0)
+    time.sleep(0.3)
 
     # 1. Coba klik tombol Kirim / Submit
     kirim_clicked = False
@@ -2082,7 +2082,7 @@ def click_kirim_and_confirm(page):
 
     if kirim_clicked:
         print("     [OK] Tombol 'Kirim' / 'Submit' diklik.")
-    time.sleep(1.5)
+    time.sleep(0.4)
 
     # 2. Tangani dialog / modal konfirmasi bertingkat (konfirm 1 & konfirm 2)
     print("  -> Menangani konfirmasi submit (konfirm 2x)...")
@@ -2120,7 +2120,7 @@ def click_kirim_and_confirm(page):
 
         if modal_handled and modal_handled.get("success"):
             print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik: '{modal_handled.get('text')}'")
-            time.sleep(2.0)
+            time.sleep(0.5)
         else:
             # Fallback Playwright jika tombol ada di dialog
             try:
@@ -2129,7 +2129,7 @@ def click_kirim_and_confirm(page):
                 if len(vis) > 0:
                     vis[-1].click(timeout=2000)
                     print(f"     [OK] Konfirmasi tahap {step_konfirm} diklik via Playwright fallback.")
-                    time.sleep(2.0)
+                    time.sleep(0.5)
                 else:
                     break
             except Exception:
@@ -2144,7 +2144,7 @@ def click_kirim_and_confirm(page):
                 splitBtn.click();
             }
         }''')
-        time.sleep(0.5)
+        time.sleep(0.2)
         page.evaluate('''() => {
             const all = Array.from(document.querySelectorAll('button, [role="menuitem"], div, span'));
             const paksa = all.find(el => (el.innerText || el.textContent || '').trim().toLowerCase() === 'submit paksa');
@@ -2152,7 +2152,7 @@ def click_kirim_and_confirm(page):
                 paksa.click();
             }
         }''')
-        time.sleep(1.0)
+        time.sleep(0.4)
         # Jika Submit Paksa memunculkan modal konfirmasi lagi, klik Ya
         page.evaluate('''() => {
             const btns = Array.from(document.querySelectorAll('button, [role="button"]')).filter(b => {
@@ -2237,19 +2237,19 @@ def process_single_assignment(page, item):
     if not menu_ok:
         print("  -> [Warning] Menu BLOK II belum terkonfirmasi terbuka, melanjutkan...")
 
-    time.sleep(1.5)
+    time.sleep(0.4)
 
     # 2. Pilih usaha sesuai nama usaha di sheet
     select_or_open_usaha(page, nama_usaha)
 
-    time.sleep(1.5)
+    time.sleep(0.4)
 
     # 3. Tambahkan catatan '#0' pada pertanyaan 27.a
     remark_ok, remark_msg = add_remark_27a(page, DEFAULT_REMARK_TEXT)
     if not remark_ok:
         return "FAILED_REMARK", remark_msg
 
-    time.sleep(1.0)
+    time.sleep(0.3)
 
     # 4. Masuk ke menu Catatan di sidebar
     open_menu_catatan(page)
@@ -2708,7 +2708,7 @@ def main():
                 save_report_data(report_data)
                 break
 
-            time.sleep(1.0)
+            time.sleep(0.3)
 
         print("\n" + "=" * 65)
         print(" SEMUA TARGET PROSES SELESAI!")
