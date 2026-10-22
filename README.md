@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Fix URL Routing Multi-Spreadsheet Live Sync (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug perutean URL Web App pada `sync_to_google_sheet`: sebelumnya penulisan status selesai untuk Prioritas 2 (Data NTB / Karangawen) terkirim ke spreadsheet yang salah karena pencocokan nama ("Dtata_NTB" vs "Prioritas 2: Data NTB") tidak cocok dan jatuh ke fallback Prioritas 1.
+  - Mengimplementasikan fungsi `resolve_gas_url_for_item` yang cerdas untuk memetakan nama sumber, parameter gid, dan alias spreadsheet target ke URL Web App yang tepat secara akurat.
+  - Memperbarui `sheet_sync_config.json` dengan alias lengkap dan mengeksekusi sinkronisasi histori lokal sehingga baris Karangawen (*BAWANG MERAH PAK KASWADI* baris 10015) serta baris Bonang lainnya kini sudah langsung bertuliskan `SELESAI (Muhshi)` dan berwarna hijau di Google Spreadsheet target.
 - **Fix Deteksi Kolom Dinamis & Sinkronisasi Total Awal Multi-Operator (`tambah_remark_27a.py`)**:
   - Memperbaiki bug deteksi kolom di Google Sheets: Prioritas 1 dan Prioritas 2 memiliki indeks kolom yang berbeda (Prioritas 1: link di Z, status di AA; Prioritas 2: link di AA, status di AB). Bot kini menggunakan deteksi huruf kolom secara dinamis (`get_source_column_letters`), mencegah kegagalan query status pada Prioritas 2.
   - Menyempurnakan fungsi `is_done(it)` agar langsung memperhitungkan `it.get("is_sheet_done")`, serta memindai seluruh data live spreadsheet di awal dan menyinkronkan setiap baris selesai (dari operator manapun) ke dalam cache JSON lokal (`processed_tambah_remark.json`).

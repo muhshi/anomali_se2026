@@ -182,6 +182,36 @@ def _do_sync_request(url, item, status="SELESAI", operator=""):
     except Exception as e:
         print(f"  -> [SYNC SHEET Warning] Gagal sinkronisasi Google Sheet: {e}")
 
+def resolve_gas_url_for_item(source_name, cfg):
+    """
+    Menemukan URL Google Apps Script Web App yang tepat untuk suatu item
+    berdasarkan nama sumber data, gid, atau kata kunci.
+    """
+    src_lower = str(source_name or "").lower()
+    urls_map = cfg.get("gas_webapp_urls", {})
+    fallback_url = (cfg.get("gas_webapp_url") or "").strip()
+
+    # 1. Cek langsung kecocokan substring nama
+    for k, u in urls_map.items():
+        if not u:
+            continue
+        k_lower = k.lower()
+        if k_lower in src_lower or src_lower in k_lower:
+            return u.strip()
+
+    # 2. Cek berdasarkan kata kunci spesifik NTB vs Detail Anomali
+    if "ntb" in src_lower or "293925488" in src_lower or "prioritas 2" in src_lower:
+        for k, u in urls_map.items():
+            if u and ("ntb" in k.lower() or "293925488" in k.lower() or "prioritas 2" in k.lower()):
+                return u.strip()
+
+    if "detail" in src_lower or "anomali" in src_lower or "gid: 0" in src_lower or "prioritas 1" in src_lower:
+        for k, u in urls_map.items():
+            if u and ("detail" in k.lower() or "anomali" in k.lower() or "prioritas 1" in k.lower() or "gid: 0" in k.lower()):
+                return u.strip()
+
+    return fallback_url
+
 def sync_to_google_sheet(item, status="SELESAI", async_mode=True):
     """
     Sinkronisasi status dan pewarnaan hijau ke Google Spreadsheet target.
@@ -190,14 +220,7 @@ def sync_to_google_sheet(item, status="SELESAI", async_mode=True):
     """
     cfg = load_sync_config()
     source_name = item.get("source_name", "")
-    urls_map = cfg.get("gas_webapp_urls", {})
-    url = ""
-    for k, u in urls_map.items():
-        if u and (k.lower() in source_name.lower() or source_name.lower() in k.lower()):
-            url = u.strip()
-            break
-    if not url:
-        url = (cfg.get("gas_webapp_url") or "").strip()
+    url = resolve_gas_url_for_item(source_name, cfg)
 
     operator = (cfg.get("operator_name") or "").strip()
     if not url:
