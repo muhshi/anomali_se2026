@@ -53,6 +53,12 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Fix False-Alarm Sesi Terputus & Eliminasi Jeda Login Ulang (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug false-positive "Error koneksi / halaman blank: halaman kosong (blank)" yang kerap muncul setiap beberapa assignment dan memaksa bot berhenti meminta tekan ENTER.
+  - Masalah terjadi karena Fasih-SM merupakan Single Page Application (SPA), di mana teks `document.body` belum selesai di-render oleh JavaScript sesaat setelah event `DOMContentLoaded`. Pengecekan blank prematur ini kini telah dihapus dari fungsi validasi koneksi.
+  - Menambahkan mekanisme *Self-Healing Auto-Reload*: jika kuesioner lambat dimuat (>12 detik), bot otomatis me-reload halaman 1 kali di latar belakang tanpa mengganggu jalannya otomatisasi.
+  - Menambahkan *Self-Check Guard* pada `pause_for_relogin`: bot memverifikasi URL aktif di browser terlebih dahulu. Jika URL masih di dalam `/app/assignment/` dan bukan login SSO, bot langsung melanjutkan pengerjaan secara mulus (*unattended*) tanpa menghentikan proses.
+  - Memperbaiki penanganan exception agar kesalahan timeout elemen atau JS DOM tidak salah diidentifikasi sebagai `SESSION_LOST`.
 - **Deteksi Header Kolom Dinamis & Tahan Perubahan Pengguna (`tambah_remark_27a.py`, `google_apps_script_sync.js`)**:
   - Mengubah seluruh sistem pembacaan dan penulisan kolom agar 100% berbasis nama header (*header name dynamic mapping*), bukan berdasarkan nomor/huruf indeks kolom statis.
   - Kebal terhadap penggeseran urutan kolom, penyisipan kolom baru oleh teman/rekan lain, perubahan huruf besar/kecil, variasi spasi, maupun *underscore* (misal: "Link Fasih SM", "link_fasih", "Status", "Status Pengerjaan", "Nama Usaha", "Kode Desa").

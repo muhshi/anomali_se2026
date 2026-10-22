@@ -867,6 +867,8 @@ def fetch_data_from_sources(sources_to_load):
 def check_connection_or_session_lost(page):
     """
     Mendeteksi apakah koneksi internet/VPN putus atau sesi Fasih-SM telah habis/keluar/terdeteksi bot.
+    Tidak mendeteksi blank awal DOM sebagai error, karena halaman SPA Fasih-SM
+    membutuhkan waktu render beberapa detik setelah DOMContentLoaded.
     """
     try:
         url = (page.url or "").lower()
@@ -876,10 +878,10 @@ def check_connection_or_session_lost(page):
             if "/app/assignment/" not in url:
                 return True, "Sesi login keluar / dialihkan ke halaman SSO BPS"
 
-        # 2. Halaman error jaringan Chromium / Windows Diagnostics / Blank DOM
+        # 2. Halaman error jaringan Chromium / Windows Diagnostics / Explicit Error Keywords
         res_check = page.evaluate('''() => {
             if (!document || !document.body) {
-                return { isError: true, reason: 'document.body null (koneksi terputus)' };
+                return { isError: false };
             }
             const title = (document.title || '').toLowerCase();
             const text = (document.body.innerText || '').toLowerCase();
@@ -895,7 +897,6 @@ def check_connection_or_session_lost(page):
                 'err_name_not_resolved',
                 'no internet',
                 'tidak ada koneksi',
-                'access denied',
                 'session expired',
                 'sesi anda telah berakhir',
                 'sesi berakhir'
@@ -907,23 +908,16 @@ def check_connection_or_session_lost(page):
                 }
             }
 
-            // Halaman blank kosong
-            const bodyChildren = document.body.children.length;
-            const bodyTextLen = text.trim().length;
-            if (bodyChildren === 0 || bodyTextLen === 0) {
-                return { isError: true, reason: 'halaman kosong (blank)' };
-            }
-
             return { isError: false };
         }''')
 
         if res_check and res_check.get("isError"):
-            return True, f"Error koneksi / halaman blank: {res_check.get('reason')}"
+            return True, f"Error koneksi jaringan: {res_check.get('reason')}"
 
     except Exception as e:
         err_msg = str(e).lower()
-        if "target closed" in err_msg or "context closed" in err_msg or "navigation failed" in err_msg or "connection refused" in err_msg:
-            return True, f"Koneksi/Browser terputus: {e}"
+        if "target closed" in err_msg or "context closed" in err_msg or "browser has been closed" in err_msg:
+            return True, f"Browser terputus/ditutup: {e}"
 
     return False, ""
 
@@ -931,7 +925,17 @@ def pause_for_relogin(page, target_link):
     """
     Menghentikan bot sementara ketika sesi terputus atau VPN disconnect,
     memberi notifikasi di terminal dan menunggu user login ulang sebelum melanjutkan.
+    Memiliki self-check otomatis untuk mencegah false-alarm jika sesi ternyata masih aktif.
     """
+    # Double-check: pastikan sesi benar-benar terputus dan bukan false positive
+    try:
+        curr_url = (page.url or "").lower()
+        if "/app/assignment/" in curr_url and ("login" not in curr_url and "sso" not in curr_url and "auth" not in curr_url):
+            print("  -> [Self-Check] Sesi Fasih-SM masih aktif di browser, melanjutkan proses otomatis tanpa jeda...")
+            return
+    except Exception:
+        pass
+
     print("\n" + "!" * 65)
     print(" [PERHATIAN] KONEKSI VPN TERPUTUS ATAU SESI LOGIN FASIH-SM KELUAR!")
     print("!" * 65)
@@ -1019,17 +1023,26 @@ def resolve_bot_detection(page, target_link):
 # DETEKSI DAN PENUNGGUAN LOADING DINAMIS FASIH-SM
 # ==============================================================================
 
-def wait_for_kuesioner_ready(page, max_wait=60):
+def wait_for_kuesioner_ready(page, max_wait=45, target_link=None):
     """
     Menunggu kuesioner assignment selesai dimuat saat pertama kali membuka link /edit.
     Loading screen Fasih-SM hanya terjadi saat pengambilan data kuesioner pertama kali.
     Begitu elemen kuesioner (SE2026 / BLOK / Keterangan) sudah muncul dan terlihat,
     loading screen selesai dan proses dapat langsung dilanjutkan.
+    Jika dalam 12 detik halaman belum ter-render (misal server Fasih lambat / transient blank),
+    bot otomatis me-reload halaman 1 kali tanpa mengganggu pengguna.
     """
     start_time = time.time()
     reported = False
+    reloaded = False
 
     while time.time() - start_time < max_wait:
+        # Cek apakah terlempar ke SSO/login
+        curr_url = (page.url or "").lower()
+        if ("sso" in curr_url and ("login" in curr_url or "auth" in curr_url)) or ("/login" in curr_url):
+            if "/app/assignment/" not in curr_url:
+                return False
+
         try:
             res = page.evaluate('''() => {
                 function isVisible(el) {
@@ -1092,6 +1105,18 @@ def wait_for_kuesioner_ready(page, max_wait=60):
                     elapsed = time.time() - start_time
                     print(f"     [OK] Kuesioner berhasil dimuat dalam {elapsed:.1f} detik.")
                 return True
+
+            # Self-healing: jika sudah menunggu 12 detik dan belum ada konten kuesioner sama sekali, coba reload otomatis 1x
+            if not reloaded and (time.time() - start_time > 12):
+                if not (res and res.get("hasContent")):
+                    print("  -> [Self-Healing] Halaman lambat dimuat oleh server, melakukan reload otomatis...")
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=25000)
+                    except Exception:
+                        pass
+                    reloaded = True
+                    time.sleep(2)
+                    continue
 
             if not reported:
                 print("  -> [Loading] Menunggu kuesioner selesai dimuat dari server...")
@@ -2171,21 +2196,27 @@ def process_single_assignment(page, item):
     link = item["link"]
     nama_usaha = item.get("nama_usaha", "")
 
-    try:
-        page.goto(link, wait_until="domcontentloaded", timeout=45000)
-    except Exception as e:
-        if "interrupted by another navigation" in str(e):
-            time.sleep(2)
-            try:
-                page.goto(link, wait_until="domcontentloaded", timeout=45000)
-            except Exception as e2:
-                return "SESSION_LOST", f"Gagal memuat halaman: {e2}"
-        else:
-            return "SESSION_LOST", f"Gagal memuat halaman: {e}"
+    # 1. Buka link /edit dengan auto-retry navigasi
+    nav_ok = False
+    for attempt in range(1, 4):
+        try:
+            page.goto(link, wait_until="domcontentloaded", timeout=40000)
+            nav_ok = True
+            break
+        except Exception as e:
+            err_s = str(e).lower()
+            if "target closed" in err_s or "context closed" in err_s:
+                return "SESSION_LOST", f"Browser ditutup: {e}"
+            if attempt < 3:
+                time.sleep(2)
+                continue
+            return "FAILED_LOAD", f"Gagal memuat halaman setelah 3x percobaan: {e}"
 
-    is_lost, reason = check_connection_or_session_lost(page)
-    if is_lost:
-        return "SESSION_LOST", reason
+    # Verifikasi URL: Cek apakah dialihkan ke login SSO BPS
+    current_url = (page.url or "").lower()
+    if ("sso" in current_url and ("login" in current_url or "auth" in current_url)) or ("/login" in current_url) or ("/auth" in current_url):
+        if "/app/assignment/" not in current_url:
+            return "SESSION_LOST", f"Sesi habis, dialihkan ke login SSO: {current_url}"
 
     resolve_bot_detection(page, link)
 
@@ -2193,12 +2224,12 @@ def process_single_assignment(page, item):
     current_url = (page.url or "").lower()
     if "/edit" not in current_url:
         if "login" in current_url or "sso" in current_url or "auth" in current_url:
-            return "SESSION_LOST", f"Sesi habis, dialihkan ke login: {current_url}"
+            return "SESSION_LOST", f"Sesi habis, dialihkan ke login SSO: {current_url}"
         print(f"  -> [SKIP] Dialihkan ke {current_url}. Bukan wilayah tugas Anda / form terkunci.")
         return "SKIP_NOT_AUTHORIZED", "Bukan wilayah tugas Anda / form terkunci"
 
-    # Menunggu kuesioner siap (loading screen server hanya ada saat awal buka link /edit)
-    wait_for_kuesioner_ready(page, max_wait=60)
+    # Menunggu kuesioner siap (dengan self-healing auto-reload jika lambat/blank)
+    wait_for_kuesioner_ready(page, max_wait=45, target_link=link)
 
     # 1. Buka menu SE2026 - L BLOK II
     print("  -> Membuka menu 'SE2026 - L BLOK II: KETERANGAN USAHA/PERUSAHAAN'...")
@@ -2606,9 +2637,20 @@ def main():
                     msg = res_msg
                 except Exception as e:
                     err_str = str(e)
-                    if "null" in err_str or "Target closed" in err_str or "timeout" in err_str.lower() or "net::" in err_str or "Execution context" in err_str:
+                    err_low = err_str.lower()
+                    # Cek apakah browser benar-benar ditutup atau dialihkan ke login SSO
+                    is_true_disconnect = False
+                    try:
+                        curr_u = (page.url or "").lower()
+                        if ("sso" in curr_u and ("login" in curr_u or "auth" in curr_u)) or ("/login" in curr_u):
+                            if "/app/assignment/" not in curr_u:
+                                is_true_disconnect = True
+                    except Exception:
+                        pass
+
+                    if "target closed" in err_low or "context closed" in err_low or "browser has been closed" in err_low or "err_internet_disconnected" in err_low or "err_connection_refused" in err_low or is_true_disconnect:
                         status = "SESSION_LOST"
-                        msg = f"Koneksi terputus/error browser: {err_str}"
+                        msg = f"Koneksi terputus/sesi habis: {err_str}"
                     else:
                         print(f"  -> [ERROR] Terjadi exception: {e}")
                         status = "FAILED_EXCEPTION"
