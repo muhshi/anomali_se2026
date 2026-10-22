@@ -53,6 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-22
+- **Deteksi Header Kolom Dinamis & Tahan Perubahan Pengguna (`tambah_remark_27a.py`, `google_apps_script_sync.js`)**:
+  - Mengubah seluruh sistem pembacaan dan penulisan kolom agar 100% berbasis nama header (*header name dynamic mapping*), bukan berdasarkan nomor/huruf indeks kolom statis.
+  - Kebal terhadap penggeseran urutan kolom, penyisipan kolom baru oleh teman/rekan lain, perubahan huruf besar/kecil, variasi spasi, maupun *underscore* (misal: "Link Fasih SM", "link_fasih", "Status", "Status Pengerjaan", "Nama Usaha", "Kode Desa").
+  - Menambahkan fungsi `getSheetColumnMap` pada skrip Google Apps Script untuk mendeteksi header secara dinamis di baris 1-5, memastikan penulisan status dan pewarnaan hijau selalu tepat sasaran tanpa menduplikasi kolom.
+  - Menambahkan cache TTL 60 detik pada `get_source_column_letters` di Python agar jika rekan kerja mengubah struktur spreadsheet saat bot sedang berjalan, bot otomatis menyesuaikan dengan struktur kolom terbaru.
 - **Update Utilitas Push Histori & Paket Distribusi (`push_local_cache_to_sheets.py`, `Bot-Tambah-Remark-SE2026.zip`)**:
   - Menambahkan konfigurasi `sys.stdout.reconfigure(encoding='utf-8')` pada Windows console di `push_local_cache_to_sheets.py` agar aman dari error encoding karakter emoji pada nama tab Google Spreadsheet.
   - Mengemas ulang arsip `Bot-Tambah-Remark-SE2026.zip` dengan kode termutakhir dan template konfigurasi siap pakai (`operator_name` kosong) untuk dibagikan ke rekan operator.

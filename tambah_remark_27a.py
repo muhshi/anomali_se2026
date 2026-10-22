@@ -312,14 +312,18 @@ def save_report_data(report_list):
 
 SHEET_COL_CACHE = {}
 
-def get_source_column_letters(source_info):
+def get_source_column_letters(source_info, max_age_seconds=60):
     """
-    Mendeteksi huruf kolom (A, B, ... Z, AA, AB) secara dinamis dari header Google Sheets
+    Mendeteksi huruf kolom (A, B, ... Z, AA, AB, ...) secara dinamis dari nama header Google Sheets
     agar query GViz 100% akurat tanpa hardcode huruf kolom.
+    Mendukung kolom yang digeser, disisipkan kolom baru, atau diubah namanya oleh pengguna lain.
     """
     name = source_info.get("name", "")
+    now = time.time()
     if name in SHEET_COL_CACHE:
-        return SHEET_COL_CACHE[name]
+        cached_entry = SHEET_COL_CACHE[name]
+        if isinstance(cached_entry, dict) and (now - cached_entry.get("_ts", 0) < max_age_seconds):
+            return cached_entry.get("mapping", {})
 
     url = source_info.get("url", "")
     gid = source_info.get("gid", "0")
@@ -334,11 +338,12 @@ def get_source_column_letters(source_info):
         return default_mapping
     sheet_id = m_id.group(1)
 
+    # Ambil 3 baris pertama untuk mendeteksi baris header secara dinamis
     params = urllib.parse.urlencode({
         "tqx": "out:csv",
-        "tq": "limit 1",
+        "tq": "limit 3",
         "gid": gid,
-        "_t": str(int(time.time()))
+        "_t": str(int(now))
     })
     gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?{params}"
 
@@ -346,35 +351,48 @@ def get_source_column_letters(source_info):
     try:
         req = urllib.request.Request(
             gviz_url,
-            headers={"User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache"}
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            }
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
             content = resp.read().decode("utf-8")
         lines = [l for l in content.splitlines() if l.strip()]
         if lines:
             reader = csv.reader(lines)
-            header = next(reader)
+            rows = list(reader)
+            if rows:
+                header_row = rows[0]
+                # Cari baris yang paling mewakili header jika baris 1 adalah judul
+                for r in rows:
+                    r_clean = [re.sub(r'[^a-z0-9]', '', str(c).lower()) for c in r]
+                    if any("fasih" in c or "link" in c for c in r_clean) and any("nama" in c or "desa" in c for c in r_clean):
+                        header_row = r
+                        break
 
-            def idx_to_col(i):
-                if i < 26:
-                    return chr(ord('A') + i)
-                return chr(ord('A') + (i // 26) - 1) + chr(ord('A') + (i % 26))
+                for idx, col_name in enumerate(header_row):
+                    cl = openpyxl.utils.get_column_letter(idx + 1)
+                    c_clean = re.sub(r'[^a-z0-9]', '', str(col_name).strip().lower())
+                    if not c_clean:
+                        continue
 
-            for idx, col_name in enumerate(header):
-                cl = idx_to_col(idx)
-                c_low = col_name.strip().lower()
-                if "status" in c_low and any(k in c_low for k in ["pengerjaan", "remark", "selesai", "cleaning"]):
-                    mapping["status"] = cl
-                elif "link_fasih" in c_low or c_low == "link":
-                    mapping["link"] = cl
-                elif "nama_usaha" in c_low:
-                    mapping["nama_usaha"] = cl
-                elif "iddesa" in c_low:
-                    mapping["iddesa"] = cl
+                    if ("fasih" in c_clean or "link" in c_clean) and not ("map" in c_clean or "google" in c_clean):
+                        mapping["link"] = cl
+                    elif "status" in c_clean:
+                        mapping["status"] = cl
+                    elif "nama" in c_clean:
+                        if "nama_usaha" not in mapping or "usaha" in c_clean or "perusahaan" in c_clean:
+                            mapping["nama_usaha"] = cl
+                    elif "desa" in c_clean:
+                        mapping["iddesa"] = cl
+                    elif "catatan" in c_clean:
+                        mapping["catatan"] = cl
     except Exception:
         pass
 
-    SHEET_COL_CACHE[name] = mapping
+    SHEET_COL_CACHE[name] = {"mapping": mapping, "_ts": now}
     return mapping
 
 def fetch_completed_from_spreadsheet(source_info):
@@ -711,12 +729,12 @@ def fetch_single_sheet(source_info):
     except Exception:
         pass
 
-    # Parse CSV dengan deteksi baris header
+    # Parse CSV dengan deteksi baris header dan pemetaan kolom dinamis
     lines = [l for l in content.splitlines() if l.strip()]
     header_idx = 0
     for idx, l in enumerate(lines[:10]):
-        l_lower = l.lower()
-        if "link_fasih" in l_lower or "nama_usaha" in l_lower:
+        l_clean = re.sub(r'[^a-z0-9]', '', l.lower())
+        if ("fasih" in l_clean or "link" in l_clean) and ("nama" in l_clean or "desa" in l_clean or "status" in l_clean):
             header_idx = idx
             break
 
@@ -724,11 +742,40 @@ def fetch_single_sheet(source_info):
     data_items = []
     kec_map, desa_map = load_wilayah_reference()
 
-    for r_idx, row in enumerate(reader, 2):
+    # Pemetaan nama kolom secara dinamis berbasis header
+    field_map = {}
+    for orig_col in (reader.fieldnames or []):
+        if not orig_col:
+            continue
+        c_clean = re.sub(r'[^a-z0-9]', '', str(orig_col).lower())
+        if ("fasih" in c_clean or "link" in c_clean) and not ("map" in c_clean or "google" in c_clean):
+            field_map["link"] = orig_col
+        elif "status" in c_clean:
+            field_map["status"] = orig_col
+        elif "nama" in c_clean:
+            if "nama_usaha" not in field_map or "usaha" in c_clean or "perusahaan" in c_clean:
+                field_map["nama_usaha"] = orig_col
+        elif "desa" in c_clean:
+            field_map["iddesa"] = orig_col
+        elif "catatan" in c_clean:
+            field_map["catatan_fasih"] = orig_col
+        elif "batch" in c_clean:
+            field_map["batch_info"] = orig_col
+        elif "petugas" in c_clean:
+            field_map["petugas_cleaning"] = orig_col
+        elif "rownum" in c_clean or c_clean == "no":
+            field_map["row_num"] = orig_col
+
+    for r_idx, row in enumerate(reader, header_idx + 2):
         if not row:
             continue
 
-        raw_link = (row.get("link_fasih_sm") or row.get("link_fasih") or row.get("link") or "").strip()
+        raw_link = str(
+            row.get(field_map.get("link", "")) or
+            row.get("link_fasih_sm") or
+            row.get("link_fasih") or
+            row.get("link") or ""
+        ).strip()
         if not raw_link or "fasih" not in raw_link:
             continue
 
@@ -736,12 +783,32 @@ def fetch_single_sheet(source_info):
         if not clean_link.endswith("/edit"):
             clean_link = clean_link + "/edit"
 
-        petugas_cleaning = str(row.get("Petugas Cleaning") or row.get("petugas_cleaning") or "").strip()
-        batch_info = str(row.get("batch_info") or "").strip()
-        iddesa = str(row.get("iddesa") or "").strip()
-        nama_usaha = str(row.get("nama_usaha") or "").strip()
-        catatan_fasih = str(row.get("catatan_fasih") or "").strip()
-        row_num = str(row.get("row_num") or r_idx).strip()
+        petugas_cleaning = str(
+            row.get(field_map.get("petugas_cleaning", "")) or
+            row.get("Petugas Cleaning") or
+            row.get("petugas_cleaning") or ""
+        ).strip()
+        batch_info = str(
+            row.get(field_map.get("batch_info", "")) or
+            row.get("batch_info") or ""
+        ).strip()
+        iddesa = str(
+            row.get(field_map.get("iddesa", "")) or
+            row.get("iddesa") or ""
+        ).strip()
+        nama_usaha = str(
+            row.get(field_map.get("nama_usaha", "")) or
+            row.get("nama_usaha") or ""
+        ).strip()
+        catatan_fasih = str(
+            row.get(field_map.get("catatan_fasih", "")) or
+            row.get("catatan_fasih") or ""
+        ).strip()
+        row_num = str(
+            row.get(field_map.get("row_num", "")) or
+            row.get("row_num") or
+            r_idx
+        ).strip()
 
         # Ekstrak Kode dan Nama Kecamatan & Desa
         idkec = iddesa[:7] if len(iddesa) >= 7 else (iddesa or "LAINNYA")
@@ -749,19 +816,20 @@ def fetch_single_sheet(source_info):
         nama_desa = desa_map.get(iddesa, "")
 
         # Deteksi apakah kolom Status Pengerjaan di Google Sheet sudah menyatakan selesai
-        status_sheet = ""
-        for k, v in row.items():
-            if not k:
-                continue
-            k_lower = k.lower()
-            if any(term in k_lower for term in ["status pengerjaan", "status remark", "status selesai", "status bot", "status_cleaning"]):
-                status_sheet = str(v or "").strip()
-                break
+        status_sheet = str(row.get(field_map.get("status", "")) or "").strip()
+        if not status_sheet:
+            for k, v in row.items():
+                if not k:
+                    continue
+                k_clean = re.sub(r'[^a-z0-9]', '', str(k).lower())
+                if "status" in k_clean:
+                    status_sheet = str(v or "").strip()
+                    break
 
         is_sheet_done = False
         if status_sheet:
             st_upper = status_sheet.upper()
-            if any(dt in st_upper for dt in ["SELESAI", "DONE", "SUDAH", "BERHASIL"]):
+            if any(dt in st_upper for dt in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
                 is_sheet_done = True
 
         data_items.append({

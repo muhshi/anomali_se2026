@@ -130,21 +130,12 @@ function handleRequest(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // B. Ambil Header Kolom untuk Pencarian Status
-    var lastCol = sheet.getLastColumn();
-    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
-    var statusColIdx = -1;
-    var linkColIdx = -1;
-    var namaColIdx = -1;
-    var desaColIdx = -1;
-
-    for (var i = 0; i < headers.length; i++) {
-      var h = String(headers[i] || "").trim().toLowerCase();
-      if (h === "status pengerjaan" || h === "status remark" || h === "status selesai") statusColIdx = i + 1;
-      if (h.includes("link_fasih") || h === "link") linkColIdx = i;
-      if (h.includes("nama_usaha")) namaColIdx = i;
-      if (h.includes("iddesa")) desaColIdx = i;
-    }
+    // B. Ambil Pemetaan Kolom Dinamis Berdasarkan Nama Header (Tahan Geser / Sisip Kolom)
+    var colMap = getSheetColumnMap(sheet);
+    var statusColIdx = colMap.statusColIdx;
+    var linkColIdx = colMap.linkColIdx;
+    var namaColIdx = colMap.namaColIdx;
+    var desaColIdx = colMap.desaColIdx;
 
     // C. Endpoint Cek Status 1 Assignment (Read-only, Realtime & Super Cepat)
     if (params.action === "check_status") {
@@ -258,39 +249,23 @@ function handleRequest(e) {
     var operator = (params.operator || "").trim();
     var timestamp = params.timestamp || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd HH:mm:ss");
 
+    // 2. Cari atau buat kolom 'Status Pengerjaan' secara dinamis (Tahan Geser / Sisip Kolom)
+    var writeColMap = getSheetColumnMap(sheet);
+    var statusColIdx = writeColMap.statusColIdx;
+    var linkColIdx = writeColMap.linkColIdx;
+    var namaColIdx = writeColMap.namaColIdx;
     var lastCol = sheet.getLastColumn();
-    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    
-    // 2. Cari atau buat kolom 'Status Pengerjaan'
-    var statusColIdx = -1;
-    for (var i = 0; i < headers.length; i++) {
-      var h = String(headers[i] || "").trim().toLowerCase();
-      if (h === "status pengerjaan" || h === "status remark" || h === "status selesai") {
-        statusColIdx = i + 1;
-        break;
-      }
-    }
 
     if (statusColIdx === -1) {
       statusColIdx = lastCol + 1;
-      sheet.getRange(1, statusColIdx).setValue("Status Pengerjaan");
-      sheet.getRange(1, statusColIdx).setFontWeight("bold");
-      sheet.getRange(1, statusColIdx).setBackground("#e0e0e0");
+      sheet.getRange(writeColMap.headerRowNum, statusColIdx).setValue("Status Pengerjaan");
+      sheet.getRange(writeColMap.headerRowNum, statusColIdx).setFontWeight("bold");
+      sheet.getRange(writeColMap.headerRowNum, statusColIdx).setBackground("#e0e0e0");
     }
 
     // 3. Cari baris target di spreadsheet
     var targetRow = -1;
     var data = sheet.getDataRange().getValues();
-
-    // Deteksi index kolom link_fasih
-    var linkColIdx = -1;
-    for (var j = 0; j < headers.length; j++) {
-      var hj = String(headers[j] || "").toLowerCase();
-      if (hj.includes("link_fasih") || hj === "link") {
-        linkColIdx = j;
-        break;
-      }
-    }
 
     // A. Cek kecocokan berdasarkan row_num (cepat jika sheet belum disortir ulang)
     if (rowNum > 1 && rowNum <= data.length) {
@@ -317,20 +292,11 @@ function handleRequest(e) {
     }
 
     // C. Jika belum ketemu juga, cari berdasarkan nama usaha
-    if (targetRow === -1 && targetNama) {
-      var namaColIdx = -1;
-      for (var k = 0; k < headers.length; k++) {
-        if (String(headers[k] || "").toLowerCase().includes("nama_usaha")) {
-          namaColIdx = k;
+    if (targetRow === -1 && targetNama && namaColIdx !== -1) {
+      for (var rn = 1; rn < data.length; rn++) {
+        if (String(data[rn][namaColIdx] || "").trim().toLowerCase() === targetNama.toLowerCase()) {
+          targetRow = rn + 1;
           break;
-        }
-      }
-      if (namaColIdx !== -1) {
-        for (var rn = 1; rn < data.length; rn++) {
-          if (String(data[rn][namaColIdx] || "").trim().toLowerCase() === targetNama.toLowerCase()) {
-            targetRow = rn + 1;
-            break;
-          }
         }
       }
     }
@@ -374,4 +340,59 @@ function handleRequest(e) {
       } catch (e) {}
     }
   }
+}
+
+/**
+ * Mendeteksi posisi kolom penting secara dinamis dari nama header sheet.
+ * Menjamin kekebalan jika kolom digeser, disisipkan kolom baru, atau diubah namanya
+ * (misal spasi, underscore, huruf besar/kecil) oleh pengguna lain.
+ */
+function getSheetColumnMap(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var maxScanRows = Math.min(sheet.getLastRow(), 5);
+  if (lastCol <= 0 || maxScanRows <= 0) {
+    return { statusColIdx: -1, linkColIdx: -1, namaColIdx: -1, desaColIdx: -1, headerRowNum: 1 };
+  }
+
+  var headerRows = sheet.getRange(1, 1, maxScanRows, lastCol).getValues();
+  var bestCols = { statusColIdx: -1, linkColIdx: -1, namaColIdx: -1, desaColIdx: -1, headerRowNum: 1 };
+
+  for (var r = 0; r < headerRows.length; r++) {
+    var rowVals = headerRows[r];
+    var currentCols = { statusColIdx: -1, linkColIdx: -1, namaColIdx: -1, desaColIdx: -1, headerRowNum: r + 1 };
+
+    for (var c = 0; c < rowVals.length; c++) {
+      var raw = String(rowVals[c] || "").trim().toLowerCase();
+      var clean = raw.replace(/[^a-z0-9]/g, "");
+      if (!clean) continue;
+
+      // Status Pengerjaan (status, statuspengerjaan, statusremark, statusselesai, statusbot, statuscleaning)
+      if (clean.indexOf("status") !== -1) {
+        currentCols.statusColIdx = c + 1; // 1-based index untuk getRange
+      }
+      // Link Fasih (linkfasih, fasihsm, linkfasihsm, fasih, link) tapi BUKAN maps / google
+      if ((clean.indexOf("fasih") !== -1 || clean.indexOf("link") !== -1) &&
+          clean.indexOf("map") === -1 && clean.indexOf("google") === -1) {
+        currentCols.linkColIdx = c; // 0-based index untuk array data[][]
+      }
+      // Nama Usaha (namausaha, namaperusahaan, nama)
+      if (clean.indexOf("nama") !== -1) {
+        if (currentCols.namaColIdx === -1 || clean.indexOf("usaha") !== -1 || clean.indexOf("perusahaan") !== -1) {
+          currentCols.namaColIdx = c; // 0-based
+        }
+      }
+      // ID Desa (iddesa, kodedesa, kddesa, idkelurahan, desa)
+      if (clean.indexOf("desa") !== -1) {
+        currentCols.desaColIdx = c; // 0-based
+      }
+    }
+
+    // Jika baris ini memiliki link atau nama usaha, ini adalah baris header
+    if (currentCols.linkColIdx !== -1 || currentCols.namaColIdx !== -1) {
+      bestCols = currentCols;
+      break;
+    }
+  }
+
+  return bestCols;
 }
