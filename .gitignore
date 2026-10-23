@@ -11,12 +11,13 @@ processed_links.json
 processed_status_ditemukan.json
 processed_edit_admin.json
 processed_jenis_kawasan.json
-processed_tambah_remark.json
+processed_tambah_remark*.json
 laporan_status_ditemukan.json
 laporan_usaha_sudah_diganti.json
 laporan_jenis_kawasan.json
-laporan_tambah_remark.json
+laporan_tambah_remark*.json
 sheet_sync_config.json
+Bot-Tambah-Remark-SE2026/
 
 # Data files
 data/*

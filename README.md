@@ -52,6 +52,27 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-10-23
+- **Pencocokan Multi-Usaha Akurat & Presisi (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug pemilihan usaha pada assignment yang memiliki lebih dari satu usaha di Blok II. Sebelumnya bot selalu mengklik usaha pertama karena selektor JavaScript membaca pembungkus tabel luar (`div.border.rounded`) yang memuat seluruh teks usaha dan mengklik tombol pertama.
+  - Menerapkan penapisan kontainer baris tunggal (hanya baris tabel/kartu dengan 1-2 tombol `Lihat Rincian`, menolak pembungkus luar dengan >2 tombol) dan algoritma pencocokan skor token kemiripan nama usaha (*highest score matching*) sehingga bot mengklik baris usaha ke-2, ke-3, dst secara presisi.
+  - Menambahkan verifikasi modal dialog aktif: jika dialog terbuka milik usaha lain, bot otomatis menutup dialog tersebut sebelum membuka rincian usaha target.
+- **Kunci Cache Kanonik Unik per Usaha (`make_cache_key`, `is_item_done`)**:
+  - Mengubah arsitektur penyimpanan dan verifikasi cache dari sekadar link menjadi kombinasi unik `f"{clean_link}::{nama_usaha}"`.
+  - Mencegah terlewatinya usaha ke-2 atau ke-3 (*false skip*) saat usaha ke-1 selesai.
+  - Memperbaiki fungsi `is_done(it)` dan perhitungan filter auto-hide wilayah (kecamatan/desa) agar status sisa tugas mencerminkan kondisi riil seluruh entitas usaha.
+- **Optimasi Performa Google Apps Script v3 Ultra Fast (`google_apps_script_sync.js`)**:
+  - Menggantikan pembacaan penuh seluruh grid `sheet.getDataRange().getValues()` (800.000+ sel di Priority 2 yang memakan waktu 22 detik) menjadi pembacaan irisan 1 kolom (*Single-Column Slice*) dan verifikasi baris instan (*row_num direct verification*).
+  - Waktu respon update berkurang drastis dari ~22 detik menjadi < 0.5 detik per assignment pada spreadsheet besar (30.000+ baris).
+  - Menambahkan dukungan `batch_update` untuk memperbarui puluhan/ratusan baris sekaligus dalam satu kali request HTTP.
+  - Memperbaiki pencocokan multi-usaha di Apps Script agar baris usaha ke-2 atau ke-3 ditandai `SELESAI` dan diwarnai hijau dengan tepat di Google Sheets.
+- **Peningkatan Batas Waktu & Ketahanan Sinkronisasi (`_do_sync_request`)**:
+  - Menaikkan timeout request sinkronisasi dari 15 detik menjadi 45 detik serta menambahkan mekanisme retry otomatis dengan jeda backoff jika server Google sibuk.
+- **Penggabungan Cache & Utilitas Push Otomatis ke Google Sheets (`push_all_collected_to_sheets.py`, `Bot-Tambah-Remark-SE2026.zip`)**:
+  - Menggabungkan seluruh file cache dan laporan pengerjaan lokal (12.256 entri cache gabungan).
+  - Menjalankan utilitas push otomatis untuk menandai seluruh baris histori pengerjaan lokal yang belum berstatus `SELESAI` di Google Sheets (Data NTB).
+  - Mengemas ulang arsip `Bot-Tambah-Remark-SE2026.zip` dengan kode termutakhir dan template konfigurasi siap pakai untuk rekan kerja.
+
 ### 2026-10-22
 - **Optimasi Kecepatan Eksekusi Bot 2x-3x Lebih Cepat (`tambah_remark_27a.py`)**:
   - Memangkas jeda waktu tidur buatan (*idle sleep*) pada seluruh alur pengerjaan assignment (buka menu Blok II, buka rincian usaha, pencarian scroll pertanyaan 27.a, input remark #0, simpan catatan, buka menu Catatan, toggle switch anomali, submit konfirmasi, hingga jeda antar-assignment).

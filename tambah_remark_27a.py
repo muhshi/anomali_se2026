@@ -141,46 +141,89 @@ def save_sync_config(cfg):
     except Exception as e:
         print(f"[Warning] Gagal menyimpan sync config: {e}")
 
-def _do_sync_request(url, item, status="SELESAI", operator=""):
-    """Mengirim request update baris ke Google Apps Script Web App."""
-    try:
-        # Deteksi gid jika ada di nama sumber data
-        source_name = item.get("source_name", "")
-        gid = ""
-        gid_match = re.search(r"gid[:\s=]+(\d+)", source_name)
-        if gid_match:
-            gid = gid_match.group(1)
+def clean_u(link):
+    """Menghilangkan query string dan trailing slash dari link assignment."""
+    clean = str(link or "").split("?")[0].rstrip("/")
+    if clean and not clean.endswith("/edit"):
+        clean += "/edit"
+    return clean
 
-        params = {
-            "link": item.get("link", ""),
-            "nama_usaha": item.get("nama_usaha", ""),
-            "row_num": item.get("row_num", ""),
-            "iddesa": item.get("iddesa", ""),
-            "status": status,
-            "operator": operator,
-            "gid": gid,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
-        query_str = urllib.parse.urlencode(params)
-        req_url = f"{url}?{query_str}"
-        req = urllib.request.Request(
-            req_url,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            resp_body = resp.read().decode("utf-8")
-            try:
-                res_json = json.loads(resp_body)
-                if res_json.get("status") == "success":
-                    sheet_info = f"[{res_json.get('sheet')}] " if res_json.get("sheet") else ""
-                    print(f"  -> [SYNC SHEET OK] {sheet_info}Baris {res_json.get('row', item.get('row_num'))} ditandai '{status}' & diwarnai hijau!")
-                else:
-                    msg = res_json.get('message', 'Update terkirim.')
-                    print(f"  -> [SYNC SHEET Info] {msg}")
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"  -> [SYNC SHEET Warning] Gagal sinkronisasi Google Sheet: {e}")
+def make_cache_key(link, nama_usaha=""):
+    """
+    Membuat key cache kanonik unik untuk setiap usaha.
+    PENTING: Selalu menggabungkan link dan nama_usaha agar assignment yang
+    memiliki banyak usaha (multi-usaha) tidak saling menimpa atau terlewati!
+    """
+    clean_l = clean_u(link)
+    clean_n = str(nama_usaha or "").strip()
+    if clean_n:
+        return f"{clean_l}::{clean_n}"
+    return clean_l
+
+def is_item_done(it, cache_set):
+    """
+    Mengecek apakah suatu item usaha sudah selesai dikerjakan:
+    1. Melalui status sheet (is_sheet_done).
+    2. Melalui cache lokal (make_cache_key).
+    Aman untuk assignment multi-usaha.
+    """
+    if it.get("is_sheet_done"):
+        return True
+    key = make_cache_key(it.get("link", ""), it.get("nama_usaha", ""))
+    if key in cache_set:
+        return True
+    # Jika nama_usaha kosong, baru cocokkan plain link
+    if not it.get("nama_usaha"):
+        clean_l = clean_u(it.get("link", ""))
+        if clean_l in cache_set or clean_l.replace("/edit", "") in cache_set:
+            return True
+    return False
+
+def _do_sync_request(url, item, status="SELESAI", operator=""):
+    """Mengirim request update baris ke Google Apps Script Web App dengan timeout 45 detik & retry otomatis."""
+    # Deteksi gid jika ada di nama sumber data
+    source_name = item.get("source_name", "")
+    gid = ""
+    gid_match = re.search(r"gid[:\s=]+(\d+)", source_name)
+    if gid_match:
+        gid = gid_match.group(1)
+
+    params = {
+        "link": item.get("link", ""),
+        "nama_usaha": item.get("nama_usaha", ""),
+        "row_num": item.get("row_num", ""),
+        "iddesa": item.get("iddesa", ""),
+        "status": status,
+        "operator": operator,
+        "gid": gid,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    query_str = urllib.parse.urlencode(params)
+    req_url = f"{url}?{query_str}"
+    req = urllib.request.Request(
+        req_url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    )
+    for retry in range(1, 3):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                resp_body = resp.read().decode("utf-8")
+                try:
+                    res_json = json.loads(resp_body)
+                    if res_json.get("status") == "success":
+                        sheet_info = f"[{res_json.get('sheet')}] " if res_json.get("sheet") else ""
+                        print(f"  -> [SYNC SHEET OK] {sheet_info}Baris {res_json.get('row', item.get('row_num'))} ditandai '{status}' & diwarnai hijau!")
+                    else:
+                        msg = res_json.get('message', 'Update terkirim.')
+                        print(f"  -> [SYNC SHEET Info] {msg}")
+                except Exception:
+                    pass
+                return
+        except Exception as e:
+            if retry == 1:
+                time.sleep(1.5)
+            else:
+                print(f"  -> [SYNC SHEET Warning] Gagal sinkronisasi Google Sheet: {e}")
 
 def resolve_gas_url_for_item(source_name, cfg):
     """
@@ -498,6 +541,7 @@ def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbo
     2. Mengambil data selesai terbaru dari Google Sheets via GViz & GAS Web App.
     3. Memperbarui is_sheet_done pada raw_data dan menambahkan semua ke processed_cache.
     4. Menyimpan processed_cache ke file JSON lokal agar sinkron permanen.
+    Akurat untuk multi-usaha: hanya menandai jika link DAN nama usaha cocok.
     """
     if verbose:
         print("\n[SYNC SPREADSHEET] Menyinkronkan status pengerjaan dari Google Sheets ke cache lokal...")
@@ -507,50 +551,42 @@ def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbo
     # A. Masukkan semua item dari raw_data yang sudah terdeteksi selesai saat unduh sheet
     for item in raw_data:
         if item.get("is_sheet_done"):
-            link = item.get("link", "")
-            nama = item.get("nama_usaha", "")
-            if link and link not in processed_cache:
-                processed_cache.add(link)
+            key = make_cache_key(item.get("link", ""), item.get("nama_usaha", ""))
+            if key not in processed_cache:
+                processed_cache.add(key)
                 total_synced_now += 1
-            if link and nama:
-                key = f"{link}::{nama}"
-                if key not in processed_cache:
-                    processed_cache.add(key)
-                    total_synced_now += 1
 
     # B. Ambil data selesai live langsung dari sumber Google Sheets
     for s in chosen_sources:
         completed = fetch_completed_from_spreadsheet(s)
         for c in completed:
-            link = c.get("link", "")
-            nama = c.get("nama_usaha", "")
+            link = clean_u(c.get("link", ""))
+            nama = (c.get("nama_usaha") or "").strip()
             desa = c.get("iddesa", "")
             status = c.get("status", "SELESAI")
 
-            clean_link = link.split("?")[0].rstrip("/")
-            if clean_link and not clean_link.endswith("/edit"):
-                clean_link = clean_link + "/edit"
-
+            key = make_cache_key(link, nama)
             added = False
-            if clean_link and clean_link not in processed_cache:
-                processed_cache.add(clean_link)
+            if key not in processed_cache:
+                processed_cache.add(key)
                 added = True
-            if clean_link and nama:
-                key = f"{clean_link}::{nama}"
-                if key not in processed_cache:
-                    processed_cache.add(key)
-                    added = True
 
-            # Tandai is_sheet_done pada raw_data
+            # Tandai is_sheet_done pada raw_data dengan pencocokan presisi (link + nama usaha)
+            c_clean_nama = re.sub(r'[^a-z0-9]', '', nama.lower())
             for item in raw_data:
-                item_link = item.get("link", "")
-                item_nama = item.get("nama_usaha", "")
+                item_link = clean_u(item.get("link", ""))
+                item_nama = (item.get("nama_usaha") or "").strip()
+                item_clean_nama = re.sub(r'[^a-z0-9]', '', item_nama.lower())
                 item_desa = item.get("iddesa", "")
 
                 is_match = False
-                if clean_link and item_link and (clean_link in item_link or item_link in clean_link):
-                    is_match = True
-                elif nama and item_nama and nama.lower() == item_nama.lower() and (not desa or not item_desa or desa == item_desa):
+                if link and item_link and link == item_link:
+                    if c_clean_nama and item_clean_nama:
+                        if c_clean_nama == item_clean_nama or c_clean_nama in item_clean_nama or item_clean_nama in c_clean_nama:
+                            is_match = True
+                    else:
+                        is_match = True
+                elif c_clean_nama and item_clean_nama and c_clean_nama == item_clean_nama and (not desa or not item_desa or desa == item_desa):
                     is_match = True
 
                 if is_match:
@@ -574,9 +610,10 @@ def check_assignment_status_live(item, chosen_sources):
     Dipanggil tepat sebelum membuka/memproses assignment di browser Fasih-SM.
     Jika assignment sudah berstatus SELESAI di Spreadsheet (dikerjakan operator lain),
     fungsi ini mengembalikan (True, status_text) sehingga bot bisa langsung melewatinya (skip).
+    Akurat untuk multi-usaha dengan mencocokkan UUID link DAN nama usaha.
     """
     link = item.get("link", "")
-    nama = item.get("nama_usaha", "")
+    nama = (item.get("nama_usaha") or "").strip()
     src_name = item.get("source_name", "")
 
     # 1. Cari source sheet yang sesuai
@@ -613,11 +650,16 @@ def check_assignment_status_live(item, chosen_sources):
     if len(parts) >= 1 and len(parts[-1]) >= 20:
         uuid = parts[-1]
 
-    escaped_nama = nama.replace("'", "\\'")
-    if uuid:
+    clean_n = re.sub(r"[^a-zA-Z0-9\s]", "", nama).strip()
+    words_n = [w for w in clean_n.split() if len(w) > 2]
+    first_word = words_n[0] if words_n else ""
+
+    if uuid and first_word:
+        tq = f"select {col_status} where {col_link} contains '{uuid}' and lower({col_nama}) contains '{first_word.lower()}'"
+    elif uuid:
         tq = f"select {col_status} where {col_link} contains '{uuid}'"
-    elif escaped_nama:
-        tq = f"select {col_status} where {col_nama} = '{escaped_nama}'"
+    elif first_word:
+        tq = f"select {col_status} where lower({col_nama}) contains '{first_word.lower()}'"
     else:
         return False, ""
 
@@ -675,7 +717,7 @@ def check_assignment_status_live(item, chosen_sources):
                     f"{gas_url}?{check_params}",
                     headers={"User-Agent": "Mozilla/5.0"}
                 )
-                with urllib.request.urlopen(g_req, timeout=5) as g_resp:
+                with urllib.request.urlopen(g_req, timeout=7) as g_resp:
                     res = json.loads(g_resp.read().decode("utf-8"))
                     if res.get("is_done"):
                         return True, res.get("sheet_status", "SELESAI")
@@ -1231,22 +1273,44 @@ def open_menu_blok_ii(page):
 
 def select_or_open_usaha(page, target_nama_usaha):
     """
-    Mencari kartu usaha / baris tabel yang cocok dengan nama usaha lalu mengklik tombol 'Lihat Rincian'.
+    Mencari kartu usaha / baris tabel yang cocok secara presisi dengan nama usaha
+    lalu mengklik tombol 'Lihat Rincian'.
+    Akurat untuk multi-usaha: mencocokkan baris tabel spesifik, menolak pembungkus kontainer luar,
+    dan menutup modal jika terbuka untuk usaha yang salah.
     """
     time.sleep(0.3)
     clean_target = (target_nama_usaha or "").strip()
     print(f"  -> Mencari dan membuka rincian usaha: '{clean_target}' (Lihat Rincian)...")
 
     # Cek jika modal / form rincian sudah terbuka
-    is_open = page.evaluate('''() => {
+    # Verifikasi apakah modal yang terbuka memang sesuai dengan target_nama_usaha
+    modal_check = page.evaluate('''(targetName) => {
+        function cleanStr(s) {
+            return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
         const dialog = document.querySelector('div[role="dialog"]');
-        if (dialog && dialog.offsetParent !== null) return true;
-        const bodyText = (document.body.innerText || '').toLowerCase();
-        return bodyText.includes('nilai produksi') && bodyText.includes('27');
-    }''')
-    if is_open:
-        print("     [OK] Form/Modal rincian usaha sudah terbuka.")
+        if (dialog && dialog.offsetParent !== null) {
+            const dText = dialog.innerText || dialog.textContent || '';
+            const uClean = cleanStr(targetName);
+            if (uClean && !cleanStr(dText).includes(uClean)) {
+                // Modal terbuka untuk usaha LAIN! Tutup modal ini agar bisa memilih usaha yang benar
+                const closeBtn = dialog.querySelector('button[aria-label="Close"], button.close, [class*="close"]');
+                if (closeBtn) {
+                    closeBtn.click();
+                    return { is_open: false, closed_wrong: true };
+                }
+            }
+            return { is_open: true, closed_wrong: false };
+        }
+        return { is_open: false, closed_wrong: false };
+    }''', clean_target)
+
+    if modal_check and modal_check.get("is_open"):
+        print("     [OK] Form/Modal rincian usaha yang sesuai sudah terbuka.")
         return True
+    elif modal_check and modal_check.get("closed_wrong"):
+        print("     [INFO] Menutup modal usaha sebelumnya yang berbeda agar membuka usaha yang sesuai.")
+        time.sleep(0.5)
 
     # 1. Cari kartu/baris usaha yang cocok dengan nama usaha lalu klik 'Lihat Rincian'
     btn_clicked = False
@@ -1256,7 +1320,7 @@ def select_or_open_usaha(page, target_nama_usaha):
                 return (el.innerText || el.textContent || '').trim();
             }
             function cleanStr(s) {
-                return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             }
             function clickEl(el) {
                 el.scrollIntoView({ behavior: 'instant', block: 'center' });
@@ -1273,36 +1337,61 @@ def select_or_open_usaha(page, target_nama_usaha):
 
             const uClean = cleanStr(namaUsaha);
             const words = namaUsaha.toLowerCase().split(/\\s+/).filter(w => w.length > 2);
-            
-            // Cari di semua kartu / baris tabel
-            const containers = Array.from(document.querySelectorAll('tr, [role="row"], .card, div[class*="border"], div[class*="rounded"], div[class*="card"]'));
-            for (const c of containers) {
-                const cText = getCleanText(c);
-                const cClean = cleanStr(cText);
-                
-                const matchFull = cClean.includes(uClean);
-                const matchWords = words.length > 0 && words.some(w => cText.toLowerCase().includes(w));
-                
-                if (matchFull || matchWords) {
-                    const btns = Array.from(c.querySelectorAll('button, a, [role="button"]'));
-                    const targetBtn = btns.find(b => {
-                        const t = getCleanText(b).toLowerCase();
-                        return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'lihat' || t === 'buka') && t.length < 30;
-                    });
-                    if (targetBtn) {
-                        clickEl(targetBtn);
-                        return { success: true, method: 'card_match', text: getCleanText(targetBtn) };
+
+            // Cari HANYA di baris tabel spesifik atau kartu usaha tunggal
+            // Filter: JANGAN gunakan kontainer luar yang memiliki banyak tombol 'Lihat Rincian'
+            const candidateRows = Array.from(document.querySelectorAll('tbody tr, tr, [role="row"], .card, div[class*="card"]'));
+            let bestBtn = null;
+            let highestScore = -1;
+            let bestName = '';
+
+            for (const row of candidateRows) {
+                const btns = Array.from(row.querySelectorAll('button, a, [role="button"]'));
+                const rincianBtns = btns.filter(b => {
+                    const t = getCleanText(b).toLowerCase();
+                    return (t === 'lihat rincian' || t.includes('lihat rincian') || t === 'lihat' || t === 'buka') && t.length < 30;
+                });
+
+                // Baris usaha tunggal hanya memiliki 1 (maksimal 2) tombol 'Lihat Rincian'
+                // Jika memiliki 3 atau lebih, itu adalah kontainer tabel luar!
+                if (rincianBtns.length === 0 || rincianBtns.length > 2) continue;
+
+                const rowText = getCleanText(row);
+                const rowClean = cleanStr(rowText);
+
+                let score = 0;
+                if (uClean && rowClean.includes(uClean)) {
+                    score = 100;
+                } else if (words.length > 0) {
+                    let matchingWords = 0;
+                    for (const w of words) {
+                        if (rowText.toLowerCase().includes(w)) matchingWords++;
                     }
+                    if (matchingWords > 0) {
+                        score = Math.round((matchingWords / words.length) * 80);
+                    }
+                }
+
+                if (score > highestScore && score >= 40) {
+                    highestScore = score;
+                    bestBtn = rincianBtns[0];
+                    bestName = rowText.slice(0, 50);
                 }
             }
 
-            // Coba juga jika nama usaha ada di sidebar sub-menu
+            if (bestBtn) {
+                clickEl(bestBtn);
+                return { success: true, method: 'row_match_best_score', score: highestScore, text: bestName };
+            }
+
+            // Coba juga jika nama usaha ada di sidebar sub-menu (Blok II navigasi pohon)
             const sidebarEls = Array.from(document.querySelectorAll('aside, nav, [role="tablist"], [class*="sidebar"], [class*="menu"], ul'));
             for (const sb of sidebarEls) {
                 const items = Array.from(sb.querySelectorAll('a, button, [role="tab"], [role="treeitem"], [role="menuitem"], li'));
                 for (const it of items) {
                     const itText = getCleanText(it);
-                    if (cleanStr(itText).includes(uClean) || (words.length > 0 && words.some(w => itText.toLowerCase().includes(w)))) {
+                    const itClean = cleanStr(itText);
+                    if (itClean && (itClean === uClean || itClean.includes(uClean) || uClean.includes(itClean))) {
                         clickEl(it);
                         return { success: true, method: 'sidebar_submenu', text: itText };
                     }
@@ -1313,7 +1402,7 @@ def select_or_open_usaha(page, target_nama_usaha):
         }''', clean_target)
 
         if res_card and res_card.get("success"):
-            print(f"     [OK] Tombol/Menu usaha '{clean_target}' berhasil diklik: '{res_card.get('text')}' ({res_card.get('method')})")
+            print(f"     [OK] Tombol usaha '{clean_target}' berhasil diklik (Metode: {res_card.get('method')}, Skor: {res_card.get('score', 100)})")
             btn_clicked = True
 
     # 2. Fallback: Cari tombol 'Lihat Rincian' umum di halaman jika hanya 1 usaha
@@ -2351,15 +2440,7 @@ def main():
     sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
 
     def is_done(it):
-        if it.get("is_sheet_done"):
-            return True
-        link = it.get("link", "")
-        nama = it.get("nama_usaha", "")
-        if link in processed_cache or f"{link}::{nama}" in processed_cache:
-            return True
-        if link.rstrip("/edit") in processed_cache or (link.rstrip("/edit") + "/edit") in processed_cache:
-            return True
-        return False
+        return is_item_done(it, processed_cache)
 
     # 4. Filter Petugas Cleaning = 0 (sesuai instruksi)
     data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
@@ -2605,10 +2686,10 @@ def main():
             desa = item["iddesa"]
             kec = item.get("nama_kecamatan", "")
             src_name = item.get("source_name", "")
-            cache_key = f"{link}::{nama}"
+            cache_key = make_cache_key(link, nama)
 
             # 1. Cek cache offline terlebih dahulu (instan 0ms)
-            if cache_key in processed_cache or link in processed_cache:
+            if is_item_done(item, processed_cache):
                 print(f"[{idx}/{total_target}] [{kec} | {desa}] SKIP (Sudah di cache lokal): {nama}")
                 continue
 
@@ -2618,7 +2699,6 @@ def main():
             if is_done_live:
                 print(f"[SKIP REALTIME - SUDAH SELESAI ({live_status})]")
                 processed_cache.add(cache_key)
-                processed_cache.add(link)
                 save_cache(processed_cache)
                 skip_count += 1
                 continue
@@ -2664,7 +2744,6 @@ def main():
 
                 if status == "SUCCESS":
                     processed_cache.add(cache_key)
-                    processed_cache.add(link)
                     save_cache(processed_cache)
                     success_count += 1
                     print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
@@ -2672,7 +2751,6 @@ def main():
                     sync_to_google_sheet(item, status="SELESAI")
                 elif status.startswith("SKIP_"):
                     processed_cache.add(cache_key)
-                    processed_cache.add(link)
                     save_cache(processed_cache)
                     skip_count += 1
                     print(f"  -> [DILEWATI] {msg}")
