@@ -2479,9 +2479,10 @@ def process_single_assignment(page, item):
                bodyText.includes('pemeriksaan');
     }''')
 
-    if already_had_remark and is_already_submitted:
-        print("  -> [OK] Form sudah memiliki catatan '#0' dan berstatus SUBMITTED sebelumnya. Melewati submit ulang...")
-        return "SUCCESS", "Sudah memiliki catatan #0 & sudah submitted sebelumnya"
+    if already_had_remark:
+        print("  -> [OK] Form ini SUDAH memiliki catatan '#0' sebelumnya!")
+        print("     [AUTO-SYNC] Langsung menandai SELESAI dan mengupdate status ke Google Sheets...")
+        return "SUCCESS", "Sudah memiliki catatan #0 sebelumnya"
 
     # 4. Masuk ke menu Catatan di sidebar
     open_menu_catatan(page)
@@ -3085,7 +3086,10 @@ def main():
                         processed_cache.add(cache_key)
                         save_cache(processed_cache)
                         success_count += 1
-                        print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
+                        if "sudah memiliki catatan #0" in str(msg).lower():
+                            print(f"  -> [BERHASIL] Catatan '#0' sudah ada sebelumnya. Status 'SELESAI' disinkronkan ke Google Sheets!")
+                        else:
+                            print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
                         # Sinkronisasi live ke Google Sheet & pewarnaan hijau
                         sync_to_google_sheet(item, status="SELESAI")
                     elif status.startswith("SKIP_"):
