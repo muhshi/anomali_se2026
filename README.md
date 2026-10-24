@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Dukungan Pertanyaan 31.a untuk Usaha Baru Mulai Tahun 2026 (`tambah_remark_27a.py`)**:
+  - Menambahkan deteksi dan penanganan otomatis untuk kuesioner usaha yang baru berdiri/mulai beroperasi di tahun 2026.
+  - Pada jenis usaha ini, pertanyaan *Nilai produksi/pendapatan/penjualan barang dan jasa* tidak bernomor 27.a melainkan bergeser menjadi **Pertanyaan 31.a**.
+  - Bot kini secara otomatis memindai kuesioner untuk Pertanyaan **27.a** atau **31.a**, mengklik tombol Catatan pada baris yang sesuai secara presisi, serta mengisikan remark `#0` tanpa gagal lagi (*FAILED_REMARK: tidak ketemu 27.a*).
 - **Dukungan Multi-Pilih Wilayah, Navigasi '00' Kembali, & Looping Tanpa Keluar Browser (`tambah_remark_27a.py`)**:
   - **Looping Tanpa Keluar Program**: Setelah target pengerjaan selesai, bot menampilkan prompt konfirmasi `Apakah ingin memproses wilayah / data lainnya? [Y/N] (Default: Y)`. Jika dijawab Ya/ENTER, bot otomatis menyinkronkan data terbaru dari Google Spreadsheet dan membuka kembali menu pilihan tanpa menutup browser Chromium, sehingga pengguna tidak perlu login ulang SSO BPS.
   - **Navigasi Kembali '00'**: Menambahkan opsi `[00]` di setiap tingkat menu: dari pilihan desa kembali ke daftar kecamatan, dari daftar kecamatan kembali ke menu filter data, dan dari menu filter data kembali ke pilihan sumber spreadsheet.

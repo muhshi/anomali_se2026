@@ -1435,11 +1435,14 @@ def select_or_open_usaha(page, target_nama_usaha):
 
 def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     """
-    Menambahkan catatan / remark '#0' pada pertanyaan:
-    '27. a. Nilai produksi/pendapatan/penjualan barang dan jasa':
-    1. Melakukan scanning scroll bertahap ke bawah pada modal/form rincian sampai pertanyaan 27.a ditemukan.
-    2. Memverifikasi dengan ketat label pertanyaan 27.a (BUKAN pertanyaan 8!).
-    3. Mengklik tombol Catatan (speech bubble) khusus untuk pertanyaan 27.a:
+    Menambahkan catatan / remark '#0' pada pertanyaan Nilai Produksi:
+    - Normal (usaha berdiri < 2026): '27. a. Nilai produksi/pendapatan/penjualan barang dan jasa'
+    - Usaha Baru (mulai beroperasi tahun 2026): '31. a. Nilai produksi/pendapatan/penjualan barang dan jasa'
+
+    Alur:
+    1. Melakukan scanning scroll bertahap ke bawah pada modal/form rincian sampai pertanyaan 27.a atau 31.a ditemukan.
+    2. Memverifikasi dengan ketat label pertanyaan (BUKAN pertanyaan 8, bukan pertanyaan 26/30 pengeluaran).
+    3. Mengklik tombol Catatan (speech bubble) khusus untuk pertanyaan 27.a / 31.a:
        <button title="Catatan" aria-label="Catatan">
     4. Mengisikan teks remark ('#0') ke dalam input / textarea popup.
     5. Mengklik tombol Simpan (icon paper plane atau title='Simpan').
@@ -1447,18 +1450,19 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     7. Menutup popup catatan.
     8. Mengklik Simpan di form rincian jika ada.
     """
-    print(f"  -> Mencari pertanyaan '27. a' dan mengklik tombol Catatan...")
+    print(f"  -> Mencari pertanyaan Nilai Produksi (27.a / 31.a) dan mengklik tombol Catatan...")
     time.sleep(0.3)
 
     # ==========================================================================
-    # TAHAP 1: SCANNING SCROLL KE BAWAH SAMPAI PERTANYAAN 27.a DITEMUKAN
+    # TAHAP 1: SCANNING SCROLL KE BAWAH SAMPAI PERTANYAAN 27.a ATAU 31.a DITEMUKAN
     # ==========================================================================
-    found_27a = False
+    found_target = False
+    q_num_found = "27.a"
     q_text_found = ""
 
     # Lakukan hingga 2 putaran scan (jika putaran 1 belum selesai loading komponen bawah)
     for pass_num in range(1, 3):
-        if found_27a:
+        if found_target:
             break
             
         if pass_num > 1:
@@ -1474,50 +1478,66 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             time.sleep(0.3)
 
         for scan_step in range(1, 36):
-            # Cek apakah elemen 27.a sudah termuat di DOM
+            # Cek apakah elemen 27.a atau 31.a sudah termuat di DOM
             res_search = page.evaluate('''() => {
                 function getCleanText(el) {
                     return (el.innerText || el.textContent || '').trim();
                 }
 
                 const all = Array.from(document.querySelectorAll('*'));
-                
-                // Regex ketat untuk pertanyaan 27.a
-                // Harus memuat 27.a atau 27. a atau (27 dan nilai produksi)
-                const matchedLeafs = all.filter(el => {
-                    const t = getCleanText(el);
-                    if (!t || t.length > 200) return false;
-                    
-                    const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || 
-                                  (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
-                    if (!is27a) return false;
+                const matchedLeafs = [];
 
-                    // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8 atau lainnya)
-                    if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) {
-                        return false;
-                    }
+                for (const el of all) {
+                    const t = getCleanText(el);
+                    if (!t || t.length > 250) continue;
+
+                    const is27a = (/\b27\s*[\.\-]?\s*a\b/i.test(t)) || 
+                                  (/\b27\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
+                    const is31a = (/\b31\s*[\.\-]?\s*a\b/i.test(t)) || 
+                                  (/\b31\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
+
+                    if (!is27a && !is31a) continue;
+
+                    // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8, 26, 30, dll)
+                    if (is27a && /\b(?:8\s*[\.\-]|9\s*[\.\-]|26\s*[\.\-]|28\s*[\.\-])/i.test(t)) continue;
+                    if (is31a && /\b(?:8\s*[\.\-]|9\s*[\.\-]|30\s*[\.\-]|32\s*[\.\-])/i.test(t)) continue;
 
                     // Harus elemen leaf terdalam yang memuat teks tersebut
                     const childHasMatch = Array.from(el.children).some(c => {
                         const ct = getCleanText(c);
-                        return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
+                        if (!ct) return false;
+                        const c27 = (/\b27\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b27\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
+                        const c31 = (/\b31\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b31\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
+                        return c27 || c31;
                     });
-                    return !childHasMatch;
-                });
+
+                    if (!childHasMatch) {
+                        matchedLeafs.push({
+                            element: el,
+                            q_num: is27a ? "27.a" : "31.a",
+                            text: t
+                        });
+                    }
+                }
 
                 if (matchedLeafs.length > 0) {
-                    const target = matchedLeafs[0];
-                    target.scrollIntoView({ behavior: 'instant', block: 'center' });
-                    return { found: true, text: getCleanText(target) };
+                    // Utamakan 27.a jika ada, atau 31.a untuk usaha mulai 2026
+                    const targetItem = matchedLeafs.find(m => m.q_num === "27.a") || matchedLeafs[0];
+                    targetItem.element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    return { found: true, text: targetItem.text, q_num: targetItem.q_num };
                 }
 
                 return { found: false };
             }''')
 
             if res_search and res_search.get("found"):
-                found_27a = True
+                found_target = True
+                q_num_found = res_search.get("q_num", "27.a")
                 q_text_found = res_search.get("text", "")
-                print(f"     [OK] Pertanyaan 27.a ditemukan (Langkah {scan_step}): '{q_text_found}'")
+                if q_num_found == "31.a":
+                    print(f"     [OK] Pertanyaan 31.a (Usaha Mulai 2026) ditemukan (Langkah {scan_step}): '{q_text_found}'")
+                else:
+                    print(f"     [OK] Pertanyaan 27.a ditemukan (Langkah {scan_step}): '{q_text_found}'")
                 time.sleep(0.4)
                 break
 
@@ -1534,19 +1554,19 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             }''')
             time.sleep(0.1)
 
-    if not found_27a:
-        print("     [GAGAL] Pertanyaan 27.a Nilai Produksi tidak dapat ditemukan di halaman ini!")
+    if not found_target:
+        print("     [GAGAL] Pertanyaan Nilai Produksi (27.a / 31.a) tidak dapat ditemukan di halaman ini!")
         print("     [PENTING] Bot TIDAK AKAN mengklik catatan sembarangan (tidak akan mengklik pertanyaan 8).")
-        return False, "Pertanyaan 27.a tidak ditemukan pada form rincian (melewati assignment ini)"
+        return False, "Pertanyaan Nilai Produksi (27.a / 31.a) tidak ditemukan pada form rincian"
 
     # ==========================================================================
-    # TAHAP 2: KLIK TOMBOL CATATAN KHUSUS UNTUK PERTANYAAN 27.a
+    # TAHAP 2: KLIK TOMBOL CATATAN KHUSUS UNTUK PERTANYAAN (27.a / 31.a)
     # ==========================================================================
-    print(f"  -> Mengklik tombol Catatan pada baris 27.a...")
+    print(f"  -> Mengklik tombol Catatan pada baris {q_num_found}...")
     btn_opened = False
 
     for attempt in range(4):
-        res_click = page.evaluate('''() => {
+        res_click = page.evaluate('''(targetQNum) => {
             function getCleanText(el) {
                 return (el.innerText || el.textContent || '').trim();
             }
@@ -1568,18 +1588,39 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
             const all = Array.from(document.querySelectorAll('*'));
             
-            // 1. Temukan kembali leaf pertanyaan 27.a
-            const matchedLeafs = all.filter(el => {
+            // 1. Temukan kembali leaf pertanyaan target
+            const matchedLeafs = [];
+            for (const el of all) {
                 const t = getCleanText(el);
-                if (!t || t.length > 200) return false;
-                const is27a = /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(t) || (/\\b27\\b/.test(t) && /nilai\\s*produksi/i.test(t));
-                if (!is27a) return false;
-                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) return false;
-                return !Array.from(el.children).some(c => {
+                if (!t || t.length > 250) continue;
+
+                let isMatch = false;
+                if (targetQNum === "31.a") {
+                    isMatch = (/\b31\s*[\.\-]?\s*a\b/i.test(t)) || 
+                              (/\b31\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
+                    if (isMatch && /\b(?:8\s*[\.\-]|9\s*[\.\-]|30\s*[\.\-]|32\s*[\.\-])/i.test(t)) isMatch = false;
+                } else {
+                    isMatch = (/\b27\s*[\.\-]?\s*a\b/i.test(t)) || 
+                              (/\b27\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
+                    if (isMatch && /\b(?:8\s*[\.\-]|9\s*[\.\-]|26\s*[\.\-]|28\s*[\.\-])/i.test(t)) isMatch = false;
+                }
+
+                if (!isMatch) continue;
+
+                const childHasMatch = Array.from(el.children).some(c => {
                     const ct = getCleanText(c);
-                    return /\\b27\\s*[\\.\\-]?\\s*a\\b/i.test(ct) || (/\\b27\\b/.test(ct) && /nilai\\s*produksi/i.test(ct));
+                    if (!ct) return false;
+                    if (targetQNum === "31.a") {
+                        return (/\b31\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b31\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
+                    } else {
+                        return (/\b27\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b27\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
+                    }
                 });
-            });
+
+                if (!childHasMatch) {
+                    matchedLeafs.push(el);
+                }
+            }
 
             if (matchedLeafs.length === 0) {
                 return { success: false, reason: 'leaf_lost' };
@@ -1588,19 +1629,18 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             const targetLabel = matchedLeafs[0];
             const targetRect = targetLabel.getBoundingClientRect();
 
-            // 2. Strategi A: Cari Catatan button di container baris 27.a
+            // 2. Strategi A: Cari Catatan button di container baris target
             let p = targetLabel.parentElement;
             for (let i = 0; i < 7; i++) {
                 if (!p) break;
                 const pText = getCleanText(p);
-                // JANGAN tembus ke parent yang memuat pertanyaan 26 atau Total pengeluaran
-                if (/\\b(?:26\\s*[\\.\\-]|total\\s*pengeluaran|8\\s*[\\.\\-])/i.test(pText)) {
+                // JANGAN tembus ke parent yang memuat total pengeluaran (26, 30, dsb)
+                if (/\b(?:26\s*[\.\-]|30\s*[\.\-]|total\s*pengeluaran|8\s*[\.\-])/i.test(pText)) {
                     break;
                 }
                 const catBtn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
                 if (catBtn) {
                     const btnRect = catBtn.getBoundingClientRect();
-                    // Pastikan tombol ini TIDAK berada di atas label 27.a (bukan milik 26.f)
                     if (btnRect.top >= targetRect.top - 15 && btnRect.top <= targetRect.top + 150) {
                         clickEl(catBtn);
                         return { success: true, method: 'isolated_container', dist: Math.abs(btnRect.top - targetRect.top) };
@@ -1610,25 +1650,23 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             }
 
             // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA tombol yang:
-            // - Berada SEJAJAR atau DI BAWAH label 27.a (top >= targetRect.top - 10)
+            // - Berada SEJAJAR atau DI BAWAH target label (top >= targetRect.top - 10)
             // - Selisih vertikal <= 150px
-            // - Container tombol TIDAK memuat teks '26' atau 'total pengeluaran'
+            // - Container tombol TIDAK memuat pertanyaan pengeluaran (26, 30, total pengeluaran)
             const allCatBtns = Array.from(document.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]'));
             let closestBtn = null;
             let minDist = 150;
 
             for (const b of allCatBtns) {
                 const bRect = b.getBoundingClientRect();
-                // Tolak keras jika tombol berada di atas label 27.a (karena itu milik pertanyaan 26.f atau sebelumnya!)
                 if (bRect.top < targetRect.top - 10) {
                     continue;
                 }
 
-                // Cek parent container tombol: pastikan TIDAK mengandung teks 26
                 const bContainer = b.closest('tr, [role="row"], div[class*="question"], div[class*="field"], .card, li, div');
                 const bText = bContainer ? getCleanText(bContainer) : '';
-                if (/\\b(?:26\\s*[\\.\\-]|total\\s*pengeluaran)/i.test(bText)) {
-                    continue; // Skip tombol milik 26!
+                if (/\b(?:26\s*[\.\-]|30\s*[\.\-]|total\s*pengeluaran)/i.test(bText)) {
+                    continue; // Skip tombol milik pengeluaran!
                 }
 
                 const distY = bRect.top - targetRect.top;
@@ -1640,22 +1678,22 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
             if (closestBtn) {
                 clickEl(closestBtn);
-                return { success: true, method: 'spatial_below_27a', dist: minDist };
+                return { success: true, method: 'spatial_below_target', dist: minDist };
             }
 
-            return { success: false, reason: 'catatan_btn_not_near_27a' };
-        }''')
+            return { success: false, reason: 'catatan_btn_not_near_target' };
+        }''', q_num_found)
 
         if res_click and res_click.get("success"):
             btn_opened = True
-            print(f"     [OK] Tombol Catatan 27.a berhasil diklik ({res_click.get('method')}, selisih vertikal: {res_click.get('dist', 0):.0f}px).")
+            print(f"     [OK] Tombol Catatan {q_num_found} berhasil diklik ({res_click.get('method')}, selisih vertikal: {res_click.get('dist', 0):.0f}px).")
             break
 
         time.sleep(0.3)
 
     if not btn_opened:
-        print("     [GAGAL] Tombol Catatan khusus pertanyaan 27.a tidak ditemukan.")
-        return False, "Tombol Catatan pertanyaan 27.a tidak ditemukan"
+        print(f"     [GAGAL] Tombol Catatan khusus pertanyaan {q_num_found} tidak ditemukan.")
+        return False, f"Tombol Catatan pertanyaan {q_num_found} tidak ditemukan"
 
     time.sleep(0.4)
 
@@ -1858,7 +1896,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     except Exception:
         pass
 
-    return True, "Remark #0 pada pertanyaan 27.a berhasil ditambahkan"
+    return True, f"Remark #0 pada pertanyaan {q_num_found} berhasil ditambahkan"
 
 # ==============================================================================
 # MENU CATATAN, SWITCH ANOMALI & KIRIM KONFIRMASI
