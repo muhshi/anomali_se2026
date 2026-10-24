@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Deteksi Badge Counter Catatan Aktif & Repackaging Bersih (`tambah_remark_27a.py`)**:
+  - Menambahkan deteksi badge counter pada tombol Catatan (`checkBadgeNumber`): memeriksa elemen `<div class="tw:-right-2 tw:-top-2 tw:absolute"><div ...>1</div></div>` yang menunjukkan bahwa baris pertanyaan sudah memiliki catatan aktif sebelum maupun sesudah diklik.
+  - Jika tombol Catatan memiliki badge angka $\ge 1$ dan kuesioner sudah berstatus `Submitted`, bot langsung menandai tugas sebagai selesai, menyimpan ke cache, dan menyinkronkan status `SELESAI` ke Google Spreadsheet live secara instan.
+  - Mengemas ulang arsip distribusi bersih [**`Bot-Tambah-Remark-SE2026.zip`**](file:///d:/Coding/Python/Anomali-SE2026/Bot-Tambah-Remark-SE2026.zip) (3.5 MB) bebas dari cache internal sehingga siap dibagikan ke rekan kerja.
 - **Deteksi Cerdas Catatan yang Sudah Ada & Auto-Sync Live ke Google Sheets (`tambah_remark_27a.py`)**:
   - Menambahkan inspeksi cerdas pada popover catatan pertanyaan 27.a / 31.a (`already_had_remark`): jika catatan `#0` sudah pernah ditambahkan sebelumnya (misalnya oleh operator lain di Fasih-SM tetapi belum tersinkron ke Google Sheets), bot langsung mendeteksinya tanpa mengetik ulang.
   - Jika form kuesioner sudah berstatus `Submitted` / `Selesai`, bot langsung menandai tugas sebagai `SUCCESS`, mencatatnya ke cache, dan **otomatis mengirimkan pembaruan status `SELESAI` ke Google Spreadsheet live**.
