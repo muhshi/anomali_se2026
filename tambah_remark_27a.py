@@ -1477,11 +1477,45 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             }''')
             time.sleep(0.3)
 
-        for scan_step in range(1, 36):
-            # Cek apakah elemen 27.a atau 31.a sudah termuat di DOM
+        for scan_step in range(1, 46):
+            # Cek apakah elemen 27.a atau 31 sudah termuat di DOM
             res_search = page.evaluate('''() => {
                 function getCleanText(el) {
                     return (el.innerText || el.textContent || '').trim();
+                }
+
+                function isQ27(t) {
+                    if (!t || t.length > 300) return false;
+                    if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) return false;
+                    if (/\\b27\\s*[\\.\\-:]?\\s*a\\b/i.test(t)) return true;
+                    if (/\\b27\\b/.test(t) && /(?:nilai|produksi|pendapatan|penjualan|omzet|omset|bruto|output)/i.test(t)) return true;
+                    return false;
+                }
+
+                function isQ31(t) {
+                    if (!t || t.length > 300) return false;
+                    // Exclude tanggal (31 Desember, dsb)
+                    if (/31\\s*(?:jan|feb|mar|apr|mei|jun|jul|agu|sep|okt|nov|des)/i.test(t)) return false;
+                    if (/31[\\/\\-]\\d{2}[\\/\\-]\\d{4}/.test(t)) return false;
+                    // Exclude kode wilayah/iddesa (3321...)
+                    if (/3321\\d+/.test(t)) return false;
+                    // Exclude nominal uang atau persentase
+                    if (/(?:rp|rupiah|idr|\\$)\\s*31/i.test(t)) return false;
+                    if (/31\\s*%/i.test(t)) return false;
+
+                    // Filter pertanyaan lain yang berdekatan
+                    if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|30\\s*[\\.\\-]|32\\s*[\\.\\-])/i.test(t)) return false;
+
+                    // 1. Prioritas utama: Ada 31.a atau 31a
+                    if (/\\b31\\s*[\\.\\-:]?\\s*a\\b/i.test(t)) return true;
+
+                    // 2. Ada 31 dengan kata kunci nilai/produksi/pendapatan/penjualan/omzet/rata-rata
+                    if (/\\b31\\b/.test(t) && /(?:nilai|produksi|pendapatan|penjualan|omzet|omset|bruto|output|rata|perkiraan|hasil|penerimaan)/i.test(t)) return true;
+
+                    // 3. Pokoknya ada 31 nya sebagai nomor pertanyaan (31. atau 31: atau 31 - atau [31] atau ^31)
+                    if (/(?:^|\\b|\\()31\\s*[\\.\\-:]/i.test(t) || /^\\s*31\\b/i.test(t)) return true;
+
+                    return false;
                 }
 
                 const all = Array.from(document.querySelectorAll('*'));
@@ -1489,39 +1523,31 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
                 for (const el of all) {
                     const t = getCleanText(el);
-                    if (!t || t.length > 250) continue;
+                    if (!t || t.length > 300) continue;
 
-                    const is27a = (/\b27\s*[\.\-]?\s*a\b/i.test(t)) || 
-                                  (/\b27\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
-                    const is31a = (/\b31\s*[\.\-]?\s*a\b/i.test(t)) || 
-                                  (/\b31\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
+                    const match27 = isQ27(t);
+                    const match31 = isQ31(t);
 
-                    if (!is27a && !is31a) continue;
+                    if (!match27 && !match31) continue;
 
-                    // Pastikan tidak mengandung nomor pertanyaan lain sebagai judul (bukan pertanyaan 8, 26, 30, dll)
-                    if (is27a && /\b(?:8\s*[\.\-]|9\s*[\.\-]|26\s*[\.\-]|28\s*[\.\-])/i.test(t)) continue;
-                    if (is31a && /\b(?:8\s*[\.\-]|9\s*[\.\-]|30\s*[\.\-]|32\s*[\.\-])/i.test(t)) continue;
-
-                    // Harus elemen leaf terdalam yang memuat teks tersebut
+                    // Pastikan elemen leaf (tidak ada anak yang juga cocok)
                     const childHasMatch = Array.from(el.children).some(c => {
                         const ct = getCleanText(c);
                         if (!ct) return false;
-                        const c27 = (/\b27\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b27\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
-                        const c31 = (/\b31\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b31\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
-                        return c27 || c31;
+                        return isQ27(ct) || isQ31(ct);
                     });
 
                     if (!childHasMatch) {
                         matchedLeafs.push({
                             element: el,
-                            q_num: is27a ? "27.a" : "31.a",
+                            q_num: match27 ? "27.a" : "31",
                             text: t
                         });
                     }
                 }
 
                 if (matchedLeafs.length > 0) {
-                    // Utamakan 27.a jika ada, atau 31.a untuk usaha mulai 2026
+                    // Utamakan 27.a jika ada, atau 31 untuk usaha mulai 2026
                     const targetItem = matchedLeafs.find(m => m.q_num === "27.a") || matchedLeafs[0];
                     targetItem.element.scrollIntoView({ behavior: 'instant', block: 'center' });
                     return { found: true, text: targetItem.text, q_num: targetItem.q_num };
@@ -1534,8 +1560,8 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 found_target = True
                 q_num_found = res_search.get("q_num", "27.a")
                 q_text_found = res_search.get("text", "")
-                if q_num_found == "31.a":
-                    print(f"     [OK] Pertanyaan 31.a (Usaha Mulai 2026) ditemukan (Langkah {scan_step}): '{q_text_found}'")
+                if "31" in q_num_found:
+                    print(f"     [OK] Pertanyaan {q_num_found} (Usaha Mulai 2026) ditemukan (Langkah {scan_step}): '{q_text_found}'")
                 else:
                     print(f"     [OK] Pertanyaan 27.a ditemukan (Langkah {scan_step}): '{q_text_found}'")
                 time.sleep(0.4)
@@ -1543,24 +1569,24 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
             # Scroll ke bawah baik window maupun kontainer modal rincian
             page.evaluate('''() => {
-                window.scrollBy(0, 800);
+                window.scrollBy(0, 650);
                 const scrollables = Array.from(document.querySelectorAll('*')).filter(el => {
                     const s = window.getComputedStyle(el);
                     return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
                 });
                 scrollables.forEach(s => {
-                    s.scrollTop += 800;
+                    s.scrollTop += 650;
                 });
             }''')
-            time.sleep(0.1)
+            time.sleep(0.12)
 
     if not found_target:
-        print("     [GAGAL] Pertanyaan Nilai Produksi (27.a / 31.a) tidak dapat ditemukan di halaman ini!")
+        print("     [GAGAL] Pertanyaan Nilai Produksi (27.a / 31) tidak dapat ditemukan di halaman ini!")
         print("     [PENTING] Bot TIDAK AKAN mengklik catatan sembarangan (tidak akan mengklik pertanyaan 8).")
-        return False, "Pertanyaan Nilai Produksi (27.a / 31.a) tidak ditemukan pada form rincian"
+        return False, "Pertanyaan Nilai Produksi (27.a / 31) tidak ditemukan pada form rincian"
 
     # ==========================================================================
-    # TAHAP 2: KLIK TOMBOL CATATAN KHUSUS UNTUK PERTANYAAN (27.a / 31.a)
+    # TAHAP 2: KLIK TOMBOL CATATAN KHUSUS UNTUK PERTANYAAN (27.a / 31)
     # ==========================================================================
     print(f"  -> Mengklik tombol Catatan pada baris {q_num_found}...")
     btn_opened = False
@@ -1569,6 +1595,29 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
         res_click = page.evaluate('''(targetQNum) => {
             function getCleanText(el) {
                 return (el.innerText || el.textContent || '').trim();
+            }
+
+            function isQ27(t) {
+                if (!t || t.length > 300) return false;
+                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|26\\s*[\\.\\-]|28\\s*[\\.\\-])/i.test(t)) return false;
+                if (/\\b27\\s*[\\.\\-:]?\\s*a\\b/i.test(t)) return true;
+                if (/\\b27\\b/.test(t) && /(?:nilai|produksi|pendapatan|penjualan|omzet|omset|bruto|output)/i.test(t)) return true;
+                return false;
+            }
+
+            function isQ31(t) {
+                if (!t || t.length > 300) return false;
+                if (/31\\s*(?:jan|feb|mar|apr|mei|jun|jul|agu|sep|okt|nov|des)/i.test(t)) return false;
+                if (/31[\\/\\-]\\d{2}[\\/\\-]\\d{4}/.test(t)) return false;
+                if (/3321\\d+/.test(t)) return false;
+                if (/(?:rp|rupiah|idr|\\$)\\s*31/i.test(t)) return false;
+                if (/31\\s*%/i.test(t)) return false;
+                if (/\\b(?:8\\s*[\\.\\-]|9\\s*[\\.\\-]|30\\s*[\\.\\-]|32\\s*[\\.\\-])/i.test(t)) return false;
+
+                if (/\\b31\\s*[\\.\\-:]?\\s*a\\b/i.test(t)) return true;
+                if (/\\b31\\b/.test(t) && /(?:nilai|produksi|pendapatan|penjualan|omzet|omset|bruto|output|rata|perkiraan|hasil|penerimaan)/i.test(t)) return true;
+                if (/(?:^|\\b|\\()31\\s*[\\.\\-:]/i.test(t) || /^\\s*31\\b/i.test(t)) return true;
+                return false;
             }
 
             function clickEl(el) {
@@ -1592,29 +1641,15 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             const matchedLeafs = [];
             for (const el of all) {
                 const t = getCleanText(el);
-                if (!t || t.length > 250) continue;
+                if (!t || t.length > 300) continue;
 
-                let isMatch = false;
-                if (targetQNum === "31.a") {
-                    isMatch = (/\b31\s*[\.\-]?\s*a\b/i.test(t)) || 
-                              (/\b31\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
-                    if (isMatch && /\b(?:8\s*[\.\-]|9\s*[\.\-]|30\s*[\.\-]|32\s*[\.\-])/i.test(t)) isMatch = false;
-                } else {
-                    isMatch = (/\b27\s*[\.\-]?\s*a\b/i.test(t)) || 
-                              (/\b27\b/.test(t) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(t));
-                    if (isMatch && /\b(?:8\s*[\.\-]|9\s*[\.\-]|26\s*[\.\-]|28\s*[\.\-])/i.test(t)) isMatch = false;
-                }
-
-                if (!isMatch) continue;
+                const matchThis = ("31" in targetQNum || targetQNum.includes("31")) ? isQ31(t) : isQ27(t);
+                if (!matchThis) continue;
 
                 const childHasMatch = Array.from(el.children).some(c => {
                     const ct = getCleanText(c);
                     if (!ct) return false;
-                    if (targetQNum === "31.a") {
-                        return (/\b31\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b31\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
-                    } else {
-                        return (/\b27\s*[\.\-]?\s*a\b/i.test(ct)) || (/\b27\b/.test(ct) && /(?:nilai\s*produksi|pendapatan|penjualan)/i.test(ct));
-                    }
+                    return ("31" in targetQNum || targetQNum.includes("31")) ? isQ31(ct) : isQ27(ct);
                 });
 
                 if (!childHasMatch) {
@@ -1635,13 +1670,13 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 if (!p) break;
                 const pText = getCleanText(p);
                 // JANGAN tembus ke parent yang memuat total pengeluaran (26, 30, dsb)
-                if (/\b(?:26\s*[\.\-]|30\s*[\.\-]|total\s*pengeluaran|8\s*[\.\-])/i.test(pText)) {
+                if (/\\b(?:26\\s*[\\.\\-]|30\\s*[\\.\\-]|total\\s*pengeluaran|8\\s*[\\.\\-])/i.test(pText)) {
                     break;
                 }
-                const catBtn = p.querySelector('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]');
+                const catBtn = p.querySelector('button[title*="Catatan" i], button[aria-label*="Catatan" i], [role="button"][title*="Catatan" i], button:has(svg)');
                 if (catBtn) {
                     const btnRect = catBtn.getBoundingClientRect();
-                    if (btnRect.top >= targetRect.top - 15 && btnRect.top <= targetRect.top + 150) {
+                    if (btnRect.top >= targetRect.top - 20 && btnRect.top <= targetRect.top + 200) {
                         clickEl(catBtn);
                         return { success: true, method: 'isolated_container', dist: Math.abs(btnRect.top - targetRect.top) };
                     }
@@ -1650,27 +1685,27 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             }
 
             // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA tombol yang:
-            // - Berada SEJAJAR atau DI BAWAH target label (top >= targetRect.top - 10)
-            // - Selisih vertikal <= 150px
+            // - Berada SEJAJAR atau DI BAWAH target label (top >= targetRect.top - 15)
+            // - Selisih vertikal <= 200px
             // - Container tombol TIDAK memuat pertanyaan pengeluaran (26, 30, total pengeluaran)
-            const allCatBtns = Array.from(document.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"]'));
+            const allCatBtns = Array.from(document.querySelectorAll('button[title*="Catatan" i], button[aria-label*="Catatan" i], [role="button"][title*="Catatan" i], button[title*="Catatan"], button[aria-label*="Catatan"]'));
             let closestBtn = null;
-            let minDist = 150;
+            let minDist = 200;
 
             for (const b of allCatBtns) {
                 const bRect = b.getBoundingClientRect();
-                if (bRect.top < targetRect.top - 10) {
+                if (bRect.top < targetRect.top - 15) {
                     continue;
                 }
 
                 const bContainer = b.closest('tr, [role="row"], div[class*="question"], div[class*="field"], .card, li, div');
                 const bText = bContainer ? getCleanText(bContainer) : '';
-                if (/\b(?:26\s*[\.\-]|30\s*[\.\-]|total\s*pengeluaran)/i.test(bText)) {
+                if (/\\b(?:26\\s*[\\.\\-]|30\\s*[\\.\\-]|total\\s*pengeluaran)/i.test(bText)) {
                     continue; // Skip tombol milik pengeluaran!
                 }
 
-                const distY = bRect.top - targetRect.top;
-                if (distY >= -10 && distY < minDist) {
+                const distY = Math.abs(bRect.top - targetRect.top);
+                if (distY < minDist) {
                     minDist = distY;
                     closestBtn = b;
                 }

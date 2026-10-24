@@ -53,10 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
-- **Dukungan Pertanyaan 31.a untuk Usaha Baru Mulai Tahun 2026 (`tambah_remark_27a.py`)**:
-  - Menambahkan deteksi dan penanganan otomatis untuk kuesioner usaha yang baru berdiri/mulai beroperasi di tahun 2026.
-  - Pada jenis usaha ini, pertanyaan *Nilai produksi/pendapatan/penjualan barang dan jasa* tidak bernomor 27.a melainkan bergeser menjadi **Pertanyaan 31.a**.
-  - Bot kini secara otomatis memindai kuesioner untuk Pertanyaan **27.a** atau **31.a**, mengklik tombol Catatan pada baris yang sesuai secara presisi, serta mengisikan remark `#0` tanpa gagal lagi (*FAILED_REMARK: tidak ketemu 27.a*).
+- **Deteksi Fleksibel Pertanyaan 31 (31.a / 31 / Nilai Produksi) untuk Usaha Mulai 2026 (`tambah_remark_27a.py`)**:
+  - Menyempurnakan pemindaian pertanyaan nilai produksi pada kuesioner usaha yang baru beroperasi di tahun 2026: jika label tidak persis memuat huruf 'a', bot secara cerdas mendeteksi segala format nomor pertanyaan **31** (seperti `31.`, `31. a`, `31 -`, maupun kombinasi kata kunci omset/rata-rata/pendapatan/penjualan/produksi).
+  - Menambahkan pengecualian pintar agar tidak salah mencocokkan tanggal kalender (`31 Desember`), ID Desa (`3321...`), nominal uang (`Rp 31...`), maupun persentase (`31%`).
+  - Memperluas deteksi tombol Catatan pada baris 31 menggunakan pencarian bertingkat (selector `button[title*="Catatan" i]`, `aria-label`, serta fallback `button:has(svg)` di baris kontainer).
+  - Mengemas ulang arsip distribusi `Bot-Tambah-Remark-SE2026.zip` dengan perbaikan ini.
 - **Dukungan Multi-Pilih Wilayah, Navigasi '00' Kembali, & Looping Tanpa Keluar Browser (`tambah_remark_27a.py`)**:
   - **Looping Tanpa Keluar Program**: Setelah target pengerjaan selesai, bot menampilkan prompt konfirmasi `Apakah ingin memproses wilayah / data lainnya? [Y/N] (Default: Y)`. Jika dijawab Ya/ENTER, bot otomatis menyinkronkan data terbaru dari Google Spreadsheet dan membuka kembali menu pilihan tanpa menutup browser Chromium, sehingga pengguna tidak perlu login ulang SSO BPS.
   - **Navigasi Kembali '00'**: Menambahkan opsi `[00]` di setiap tingkat menu: dari pilihan desa kembali ke daftar kecamatan, dari daftar kecamatan kembali ke menu filter data, dan dari menu filter data kembali ke pilihan sumber spreadsheet.
