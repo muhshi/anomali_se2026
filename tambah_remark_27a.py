@@ -1635,6 +1635,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 el.click();
             }
 
+            const isTarget31 = String(targetQNum || "").includes("31");
             const all = Array.from(document.querySelectorAll('*'));
             
             // 1. Temukan kembali leaf pertanyaan target
@@ -1643,13 +1644,13 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 const t = getCleanText(el);
                 if (!t || t.length > 300) continue;
 
-                const matchThis = ("31" in targetQNum || targetQNum.includes("31")) ? isQ31(t) : isQ27(t);
+                const matchThis = isTarget31 ? isQ31(t) : isQ27(t);
                 if (!matchThis) continue;
 
                 const childHasMatch = Array.from(el.children).some(c => {
                     const ct = getCleanText(c);
                     if (!ct) return false;
-                    return ("31" in targetQNum || targetQNum.includes("31")) ? isQ31(ct) : isQ27(ct);
+                    return isTarget31 ? isQ31(ct) : isQ27(ct);
                 });
 
                 if (!childHasMatch) {
@@ -1664,7 +1665,29 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             const targetLabel = matchedLeafs[0];
             const targetRect = targetLabel.getBoundingClientRect();
 
-            // 2. Strategi A: Cari Catatan button di container baris target
+            function isVisible(el) {
+                if (!el) return false;
+                const s = window.getComputedStyle(el);
+                return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' && el.offsetWidth > 0 && el.offsetHeight > 0;
+            }
+
+            // 2. Strategi A: Cari langsung di baris kontainer terdekat (div id^="nilai_", div.rounded, tr, dsb)
+            const rowContainer = targetLabel.closest('div[id^="nilai_"], div[class*="rounded-lg"], div[class*="py-2"], tr, [role="row"]') || 
+                                 (targetLabel.parentElement ? targetLabel.parentElement.parentElement : null);
+
+            if (rowContainer) {
+                const catBtns = Array.from(rowContainer.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"], button[title*="Catatan" i], button[aria-label*="Catatan" i]'));
+                if (catBtns.length > 0) {
+                    // Cari tombol yang benar-benar visible di layar desktop
+                    const targetBtn = catBtns.find(isVisible) || catBtns[catBtns.length - 1] || catBtns[0];
+                    if (targetBtn) {
+                        clickEl(targetBtn);
+                        return { success: true, method: 'row_container_direct', dist: 0 };
+                    }
+                }
+            }
+
+            // 3. Strategi B: Cari Catatan button di parent bertingkat ke atas
             let p = targetLabel.parentElement;
             for (let i = 0; i < 7; i++) {
                 if (!p) break;
@@ -1684,10 +1707,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 p = p.parentElement;
             }
 
-            // 3. Strategi B: Cari SEMUA tombol Catatan di halaman, tapi HANYA tombol yang:
-            // - Berada SEJAJAR atau DI BAWAH target label (top >= targetRect.top - 15)
-            // - Selisih vertikal <= 200px
-            // - Container tombol TIDAK memuat pertanyaan pengeluaran (26, 30, total pengeluaran)
+            // 4. Strategi C: Cari SEMUA tombol Catatan di halaman (kedekatan vertikal)
             const allCatBtns = Array.from(document.querySelectorAll('button[title*="Catatan" i], button[aria-label*="Catatan" i], [role="button"][title*="Catatan" i], button[title*="Catatan"], button[aria-label*="Catatan"]'));
             let closestBtn = null;
             let minDist = 200;
@@ -1701,7 +1721,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 const bContainer = b.closest('tr, [role="row"], div[class*="question"], div[class*="field"], .card, li, div');
                 const bText = bContainer ? getCleanText(bContainer) : '';
                 if (/\\b(?:26\\s*[\\.\\-]|30\\s*[\\.\\-]|total\\s*pengeluaran)/i.test(bText)) {
-                    continue; // Skip tombol milik pengeluaran!
+                    continue;
                 }
 
                 const distY = Math.abs(bRect.top - targetRect.top);

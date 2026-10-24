@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Fix TypeError Evaluasi JS & Locator Tombol Catatan Pertanyaan 31 (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug JavaScript `TypeError: Cannot use 'in' operator to search for '31' in 31` yang muncul saat mengklik tombol Catatan pada Pertanyaan 31 (mengubah pengecekan menjadi `String(targetQNum).includes("31")`).
+  - Menyelaraskan struktur DOM berbasis HTML Fasih-SM: Pertanyaan 31.a berada di dalam kontainer `<div id="nilai_pendapatan_bln...">` dengan label `31. a. Nilai pendapatan barang dan jasa`.
+  - Menerapkan seleksi tombol Catatan yang terlihat (*visible*) di kontainer baris tersebut (`tw:@lg/form:flex!`), mencegah kegagalan klik tombol Catatan mobile (`tw:@lg/form:hidden`).
 - **Deteksi Fleksibel Pertanyaan 31 (31.a / 31 / Nilai Produksi) untuk Usaha Mulai 2026 (`tambah_remark_27a.py`)**:
   - Menyempurnakan pemindaian pertanyaan nilai produksi pada kuesioner usaha yang baru beroperasi di tahun 2026: jika label tidak persis memuat huruf 'a', bot secara cerdas mendeteksi segala format nomor pertanyaan **31** (seperti `31.`, `31. a`, `31 -`, maupun kombinasi kata kunci omset/rata-rata/pendapatan/penjualan/produksi).
   - Menambahkan pengecualian pintar agar tidak salah mencocokkan tanggal kalender (`31 Desember`), ID Desa (`3321...`), nominal uang (`Rp 31...`), maupun persentase (`31%`).
