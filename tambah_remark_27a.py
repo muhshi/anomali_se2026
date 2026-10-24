@@ -1757,6 +1757,7 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     # ==========================================================================
     print(f"  -> Mengisikan teks remark '{remark_text}'...")
     text_filled = False
+    already_had_remark = False
 
     # Coba via JS dalam popover aktif
     try:
@@ -1769,6 +1770,10 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             });
 
             const scope = activeDialog || document.body;
+            const scopeText = (scope.innerText || scope.textContent || '').toLowerCase();
+            const txtLower = (txt || '').trim().toLowerCase();
+            let alreadyHas = scopeText.includes(txtLower);
+
             const textareas = Array.from(scope.querySelectorAll('textarea, input[type="text"]')).filter(el => {
                 const s = window.getComputedStyle(el);
                 return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null;
@@ -1776,6 +1781,9 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
             if (textareas.length > 0) {
                 const targetInput = textareas[textareas.length - 1];
+                if ((targetInput.value || '').toLowerCase().includes(txtLower)) {
+                    alreadyHas = true;
+                }
                 targetInput.focus();
                 
                 const proto = targetInput.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -1788,13 +1796,16 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
                 targetInput.dispatchEvent(new Event('input', { bubbles: true }));
                 targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-                return { success: true, tag: targetInput.tagName };
+                return { success: true, tag: targetInput.tagName, already_had_remark: alreadyHas };
             }
-            return { success: false };
+            return { success: false, already_had_remark: alreadyHas };
         }''', remark_text)
 
         if res_fill and res_fill.get("success"):
             text_filled = True
+        if res_fill and res_fill.get("already_had_remark"):
+            already_had_remark = True
+            print(f"     [INFO] Catatan '{remark_text}' SUDAH ADA sebelumnya pada popover pertanyaan {q_num_found}!")
     except Exception:
         pass
 
@@ -1951,7 +1962,9 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
     except Exception:
         pass
 
-    return True, f"Remark #0 pada pertanyaan {q_num_found} berhasil ditambahkan"
+    if already_had_remark:
+        return True, f"ALREADY_EXISTS: Remark {remark_text} pada pertanyaan {q_num_found} sudah ada sebelumnya"
+    return True, f"Remark {remark_text} pada pertanyaan {q_num_found} berhasil ditambahkan"
 
 # ==============================================================================
 # MENU CATATAN, SWITCH ANOMALI & KIRIM KONFIRMASI
@@ -2426,7 +2439,22 @@ def process_single_assignment(page, item):
     if not remark_ok:
         return "FAILED_REMARK", remark_msg
 
+    already_had_remark = "ALREADY_EXISTS" in str(remark_msg)
+
     time.sleep(0.3)
+
+    # Cek apakah kuesioner sebenarnya sudah submitted / selesai di Fasih-SM
+    is_already_submitted = page.evaluate('''() => {
+        const bodyText = (document.body.innerText || '').toLowerCase();
+        return bodyText.includes('status: submitted') || 
+               bodyText.includes('status: selesai') || 
+               bodyText.includes('menunggu persetujuan') ||
+               bodyText.includes('pemeriksaan');
+    }''')
+
+    if already_had_remark and is_already_submitted:
+        print("  -> [OK] Form sudah memiliki catatan '#0' dan berstatus SUBMITTED sebelumnya. Melewati submit ulang...")
+        return "SUCCESS", "Sudah memiliki catatan #0 & sudah submitted sebelumnya"
 
     # 4. Masuk ke menu Catatan di sidebar
     open_menu_catatan(page)
@@ -2438,6 +2466,9 @@ def process_single_assignment(page, item):
     print("  -> Menyimpan dan mengirimkan form...")
     kirim_ok, msg_kirim = click_kirim_and_confirm(page)
     if not kirim_ok:
+        if already_had_remark:
+            print("  -> [INFO] Form sudah memiliki catatan #0 sebelumnya, pengiriman dianggap selesai.")
+            return "SUCCESS", "Sudah memiliki catatan #0 sebelumnya"
         print(f"  -> [GAGAL] Pengiriman form gagal: {msg_kirim}")
         return "FAILED_SUBMIT", msg_kirim
 

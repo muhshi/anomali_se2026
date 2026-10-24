@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Deteksi Cerdas Catatan yang Sudah Ada & Auto-Sync Live ke Google Sheets (`tambah_remark_27a.py`)**:
+  - Menambahkan inspeksi cerdas pada popover catatan pertanyaan 27.a / 31.a (`already_had_remark`): jika catatan `#0` sudah pernah ditambahkan sebelumnya (misalnya oleh operator lain di Fasih-SM tetapi belum tersinkron ke Google Sheets), bot langsung mendeteksinya tanpa mengetik ulang.
+  - Jika form kuesioner sudah berstatus `Submitted` / `Selesai`, bot langsung menandai tugas sebagai `SUCCESS`, mencatatnya ke cache, dan **otomatis mengirimkan pembaruan status `SELESAI` ke Google Spreadsheet live**.
+  - Mengeliminasi pengulangan submit (*redundant submission*) dan mempercepat penyelesaian baris yang statusnya tertinggal di Google Sheets.
 - **Dokumentasi Lengkap Blueprint & Playbook Inti Otomasi Fasih-SM (`CORE_BOT_FASIH_PLAYBOOK.md`)**:
   - Menyusun panduan arsitektur komprehensif dan katalog kode inti (*core patterns*) otomasi Fasih-SM untuk memfasilitasi pembuatan bot-bot baru (seperti bot pengubah isian field/pertanyaan, verifikator kuesioner, maupun bot batch submit lainnya).
   - Merangkum 8 modul rekayasa teruji (*battle-tested*): Fast Google Sheets Ingestion & Dynamic Header Resolver, Interactive CLI Multi-Select & 00 Back Navigation, Persistent Anti-Bot Chromium Context & SSO Session, Sidebar Accordion & Multi-Usaha Row Targeting, Universal React/SPA Form Field Modifier Engine, Catatan/Speech Bubble Popover Ingestion, Cascading Submission & Submit Paksa, serta Live Async Sync Google Apps Script.
