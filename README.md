@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Dukungan Multi-Pilih Wilayah, Navigasi '00' Kembali, & Looping Tanpa Keluar Browser (`tambah_remark_27a.py`)**:
+  - **Looping Tanpa Keluar Program**: Setelah target pengerjaan selesai, bot menampilkan prompt konfirmasi `Apakah ingin memproses wilayah / data lainnya? [Y/N] (Default: Y)`. Jika dijawab Ya/ENTER, bot otomatis menyinkronkan data terbaru dari Google Spreadsheet dan membuka kembali menu pilihan tanpa menutup browser Chromium, sehingga pengguna tidak perlu login ulang SSO BPS.
+  - **Navigasi Kembali '00'**: Menambahkan opsi `[00]` di setiap tingkat menu: dari pilihan desa kembali ke daftar kecamatan, dari daftar kecamatan kembali ke menu filter data, dan dari menu filter data kembali ke pilihan sumber spreadsheet.
+  - **Multi-Pilih Kecamatan, Desa, & Batch**: Pengguna kini dapat memilih lebih dari satu wilayah sekaligus menggunakan pemisah koma (contoh: `1,2,3,4`), spasi (contoh: `1 2 4`), maupun rentang (range contoh: `1-4` atau `1, 3-5`). Seluruh data dari wilayah terpilih akan digabungkan secara otomatis dalam satu antrean pengerjaan.
 - **Fix Kritis False-Positive Skip Realtime & Ekstraksi UUID Assignment (`tambah_remark_27a.py`)**:
   - Memperbaiki bug fatal pada fungsi `check_assignment_status_live` yang sebelumnya menyebabkan ratusan data (seperti 202 data di Kecamatan Bonang) keliru dilewati (*falsely skipped*) dengan status `[SKIP REALTIME - SUDAH SELESAI]`.
   - Masalah terjadi karena link berakhiran `/edit` menyebabkan ekstraksi UUID via `split('/')[-1]` hanya menghasilkan kata `'edit'`, yang memicu fallback pencarian query status hanya berdasarkan kata pertama nama usaha (misal kata `'jual'`, `'warung'`, `'toko'`, `'kios'`). Akibatnya, jika ada usaha lain di kecamatan berbeda dengan kata tersebut yang sudah selesai, baris aktif keliru dianggap sudah selesai dan di-skip tanpa diproses.

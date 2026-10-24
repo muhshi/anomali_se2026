@@ -2350,6 +2350,46 @@ def process_single_assignment(page, item):
 
     return "SUCCESS", "Remark #0 berhasil ditambahkan & form berhasil dikirim dan dikonfirmasi"
 
+def parse_multi_choice(input_str, max_val):
+    """
+    Memparsing input pilihan angka tunggal, jamak (koma/spasi), atau rentang (range misal: '1,2,3', '1-4', '1, 3-5').
+    Mengembalikan list integer unik 1-based yang valid (1 <= x <= max_val) terurut.
+    Jika input berupa '00', mengembalikan string '00' sebagai sinyal kembali ke menu sebelumnya.
+    """
+    raw = input_str.strip()
+    if not raw:
+        return []
+    if raw == "00":
+        return "00"
+
+    selected = set()
+    tokens = re.split(r'[,;\s]+', raw)
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if token == "00":
+            return "00"
+
+        # Cek apakah range misal '1-4' atau '3-1'
+        if "-" in token:
+            m = re.match(r"^(\d+)\s*-\s*(\d+)$", token)
+            if m:
+                s = int(m.group(1))
+                e = int(m.group(2))
+                step = 1 if s <= e else -1
+                for val in range(s, e + step, step):
+                    if 1 <= val <= max_val:
+                        selected.add(val)
+            continue
+
+        if token.isdigit():
+            val = int(token)
+            if 1 <= val <= max_val:
+                selected.add(val)
+
+    return sorted(list(selected))
+
 # ==============================================================================
 # MAIN RUNNER
 # ==============================================================================
@@ -2360,30 +2400,7 @@ def main():
     print(" Fasih-SM BPS (SE2026)")
     print("=" * 65)
 
-    # 1. Pilihan Sumber Data Google Sheets
-    print("\nPILIHAN SUMBER DATA SPREADSHEET:")
-    print("  [1] Prioritas 1: Data Detail Anomali (https://docs.google.com/...gid=0) [DEFAULT]")
-    print("  [2] Prioritas 2: Data NTB (https://docs.google.com/...gid=293925488)")
-    print("  [3] GABUNGKAN SEMUA SHEET (Prioritas 1 + Prioritas 2)")
-
-    src_choice = input("\nPilih sumber data [1/2/3] (Default: 1): ").strip()
-    if src_choice == "2":
-        chosen_sources = [SHEET_SOURCES[1]]
-    elif src_choice == "3":
-        chosen_sources = SHEET_SOURCES
-    else:
-        chosen_sources = [SHEET_SOURCES[0]]
-
-    print(f"\n-> Memuat data dari: {', '.join([s['name'] for s in chosen_sources])}")
-    raw_data = fetch_data_from_sources(chosen_sources)
-    if not raw_data:
-        print("\n[ERROR] Tidak dapat memuat data dari Google Sheets!")
-        input("\nTekan ENTER untuk keluar...")
-        sys.exit(1)
-
-    print(f"\nTotal data berhasil diambil dari Google Sheets: {len(raw_data)} baris.")
-
-    # 2. Cek Konfigurasi Sinkronisasi & Registrasi Operator
+    # 1. Cek Konfigurasi Sinkronisasi & Registrasi Operator (Hanya 1x di awal)
     sync_cfg = load_sync_config()
     operator_name = (sync_cfg.get("operator_name") or "").strip()
 
@@ -2402,396 +2419,588 @@ def main():
     else:
         print(f"\n[Operator Aktif]: {operator_name}")
 
-    # Cek URL Sinkronisasi untuk sumber data yang dipilih
     gas_url = (sync_cfg.get("gas_webapp_url") or "").strip()
     urls_map = sync_cfg.get("gas_webapp_urls", {})
-    active_source_names = [s["name"] for s in chosen_sources]
-    matched_urls = []
-    for s_name in active_source_names:
-        u = ""
-        for k, v in urls_map.items():
-            if v and (k.lower() in s_name.lower() or s_name.lower() in k.lower()):
-                u = v.strip()
-                break
-        if not u and gas_url:
-            u = gas_url
-        if u:
-            matched_urls.append((s_name, u))
 
-    if matched_urls:
-        print(f"[LIVE SYNC SPREADSHEET: AKTIF]")
-        for s_n, u_val in matched_urls:
-            m_url = u_val[:38] + "..." if len(u_val) > 42 else u_val
-            print(f" -> '{s_n}': {m_url}")
-        print(f" -> Baris yang selesai otomatis ditandai 'SELESAI ({operator_name})' dan diwarnai HIJAU di Google Sheet.")
-    else:
-        print("\n[INFO SINKRONISASI LIVE]")
-        print(" -> Google Apps Script Web App belum diisi (tetap menggunakan cache offline lokal).")
-        print(" -> Untuk mengaktifkan tanda 'SELESAI' & warna hijau live di spreadsheet,")
-        print("    masukkan URL Web App Google Apps Script ke file 'sheet_sync_config.json'.")
-
-    # 3. Sinkronkan Cache Progres (Offline JSON + Live Google Sheet)
-    processed_cache = load_cache()
-    sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-
-    def is_done(it):
-        return is_item_done(it, processed_cache)
-
-    # 4. Filter Petugas Cleaning = 0 (sesuai instruksi)
-    data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-    print(f"\nData dengan 'Petugas Cleaning = 0': {len(data_cleaning_0)} baris.")
-
-    # 5. Menu Filter Interaktif di Terminal (dengan Auto-Hide yang Sudah Selesai)
-    print("\nPILIHAN FILTER DATA:")
-    print("  [0] SEMUA DATA (Petugas Cleaning = 0) [DEFAULT]")
-    print("  [1] Filter Berdasarkan Kecamatan [BARU - Auto-hide Selesai]")
-    print("  [2] Filter Berdasarkan ID Desa (iddesa) [Auto-hide Selesai]")
-    print("  [3] Filter Berdasarkan Batch (batch_info) [Auto-hide Selesai]")
-    print("  [4] Tampilkan Semua Petugas Cleaning (Termasuk non-0)")
-
-    filter_choice = input("\nPilih nomor filter [0/1/2/3/4] (Default: 0): ").strip()
-    active_data = data_cleaning_0
-
-    if filter_choice == "1":
-        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar kecamatan
-        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-
-        # Grouping berdasarkan Kecamatan (idkec)
-        all_idkecs = sorted(list(set(d["idkec"] for d in data_cleaning_0 if d.get("idkec"))))
-        unfinished_kecs = []
-        for idk in all_idkecs:
-            items_k = [d for d in data_cleaning_0 if d.get("idkec") == idk]
-            total_k = len(items_k)
-            done_k = sum(1 for it in items_k if is_done(it))
-            rem_k = total_k - done_k
-            if rem_k > 0:
-                nama_k = items_k[0].get("nama_kecamatan", idk)
-                unfinished_kecs.append({
-                    "idkec": idk,
-                    "nama_kecamatan": nama_k,
-                    "total": total_k,
-                    "done": done_k,
-                    "remaining": rem_k,
-                    "items": items_k
-                })
-
-        if not unfinished_kecs:
-            print("\n[INFO] SELURUH KECAMATAN PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
-            input("\nTekan ENTER untuk keluar...")
-            sys.exit(0)
-
-        completed_kecs_count = len(all_idkecs) - len(unfinished_kecs)
-        print(f"\nDAFTAR KECAMATAN (Hanya yang belum selesai):")
-        if completed_kecs_count > 0:
-            print(f"(* {completed_kecs_count} kecamatan yang sudah selesai 100% otomatis disembunyikan)")
-
-        for idx, k_info in enumerate(unfinished_kecs, 1):
-            print(f"  [{idx}] Kecamatan {k_info['nama_kecamatan']} [{k_info['idkec']}] ({k_info['remaining']} data belum selesai / {k_info['total']} total)")
-
-        kec_input = input(f"\nPilih nomor Kecamatan [1-{len(unfinished_kecs)}]: ").strip()
-        if kec_input.isdigit() and 1 <= int(kec_input) <= len(unfinished_kecs):
-            sel_kec = unfinished_kecs[int(kec_input) - 1]
-
-            # Sinkronkan kembali sebelum menampilkan daftar desa di dalam kecamatan terpilih
-            sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
-            data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-            kec_items = [d for d in data_cleaning_0 if d.get("idkec") == sel_kec["idkec"]]
-
-            # Deteksi desa yang belum selesai di dalam kecamatan terpilih
-            all_desas_in_kec = sorted(list(set(d["iddesa"] for d in kec_items if d.get("iddesa"))))
-            unfinished_desas_in_kec = []
-            for did in all_desas_in_kec:
-                items_d = [d for d in kec_items if d.get("iddesa") == did]
-                t_d = len(items_d)
-                d_d = sum(1 for it in items_d if is_done(it))
-                r_d = t_d - d_d
-                if r_d > 0:
-                    n_d = items_d[0].get("nama_desa", "")
-                    label_d = f"Desa {did}" + (f" - {n_d}" if n_d else "")
-                    unfinished_desas_in_kec.append({
-                        "iddesa": did,
-                        "label": label_d,
-                        "remaining": r_d,
-                        "items": items_d
-                    })
-
-            if len(unfinished_desas_in_kec) > 1:
-                print(f"\nPILIHAN WILAYAH DI KECAMATAN {sel_kec['nama_kecamatan'].upper()}:")
-                print(f"  [0] PROSES SEMUA DESA DI KECAMATAN INI ({sel_kec['remaining']} data belum selesai) [DEFAULT]")
-                for didx, d_sub in enumerate(unfinished_desas_in_kec, 1):
-                    print(f"  [{didx}] {d_sub['label']} ({d_sub['remaining']} data)")
-
-                sub_choice = input(f"Pilih opsi desa [0-{len(unfinished_desas_in_kec)}] (Default: 0): ").strip()
-                if sub_choice.isdigit() and 1 <= int(sub_choice) <= len(unfinished_desas_in_kec):
-                    sel_sub_desa = unfinished_desas_in_kec[int(sub_choice) - 1]
-                    active_data = sel_sub_desa["items"]
-                    print(f"-> Filter aktif: {sel_sub_desa['label']} di Kec. {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
-                else:
-                    active_data = kec_items
-                    print(f"-> Filter aktif: Seluruh Kecamatan {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
-            else:
-                active_data = kec_items
-                print(f"-> Filter aktif: Kecamatan {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
-
-    elif filter_choice == "2":
-        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar ID desa
-        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-
-        # Grouping berdasarkan ID Desa
-        all_desas = sorted(list(set(d["iddesa"] for d in data_cleaning_0 if d.get("iddesa"))))
-        unfinished_desas = []
-        for did in all_desas:
-            items_d = [d for d in data_cleaning_0 if d.get("iddesa") == did]
-            t_d = len(items_d)
-            d_d = sum(1 for it in items_d if is_done(it))
-            r_d = t_d - d_d
-            if r_d > 0:
-                n_d = items_d[0].get("nama_desa", "")
-                k_name = items_d[0].get("nama_kecamatan", "")
-                label_parts = [f"Desa {did}"]
-                if n_d:
-                    label_parts.append(n_d)
-                if k_name:
-                    label_parts.append(f"(Kec. {k_name})")
-                label_d = " - ".join(label_parts)
-                unfinished_desas.append({
-                    "iddesa": did,
-                    "label": label_d,
-                    "total": t_d,
-                    "done": d_d,
-                    "remaining": r_d,
-                    "items": items_d
-                })
-
-        if not unfinished_desas:
-            print("\n[INFO] SELURUH DESA PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
-            input("\nTekan ENTER untuk keluar...")
-            sys.exit(0)
-
-        completed_desas_count = len(all_desas) - len(unfinished_desas)
-        print("\nDAFTAR ID DESA (Hanya yang belum selesai):")
-        if completed_desas_count > 0:
-            print(f"(* {completed_desas_count} desa yang sudah selesai 100% otomatis disembunyikan)")
-
-        for idx, d_info in enumerate(unfinished_desas, 1):
-            print(f"  [{idx}] {d_info['label']} ({d_info['remaining']} data belum selesai / {d_info['total']} total)")
-
-        desa_choice = input(f"\nPilih nomor ID Desa [1-{len(unfinished_desas)}]: ").strip()
-        if desa_choice.isdigit() and 1 <= int(desa_choice) <= len(unfinished_desas):
-            selected_desa = unfinished_desas[int(desa_choice) - 1]
-            active_data = selected_desa["items"]
-            print(f"-> Filter aktif: {selected_desa['label']} ({len(active_data)} data)")
-
-    elif filter_choice == "3":
-        # Sinkronkan status spreadsheet realtime sebelum menampilkan daftar batch
-        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-
-        # Grouping berdasarkan Batch
-        all_batches = sorted(list(set(d["batch_info"] for d in data_cleaning_0 if d.get("batch_info"))))
-        unfinished_batches = []
-        for b_info in all_batches:
-            items_b = [d for d in data_cleaning_0 if d.get("batch_info") == b_info]
-            t_b = len(items_b)
-            d_b = sum(1 for it in items_b if is_done(it))
-            r_b = t_b - d_b
-            if r_b > 0:
-                unfinished_batches.append({
-                    "batch_info": b_info,
-                    "total": t_b,
-                    "done": d_b,
-                    "remaining": r_b,
-                    "items": items_b
-                })
-
-        if not unfinished_batches:
-            print("\n[INFO] SELURUH BATCH PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
-            input("\nTekan ENTER untuk keluar...")
-            sys.exit(0)
-
-        print("\nDAFTAR BATCH (Hanya yang belum selesai):")
-        for idx, b_item in enumerate(unfinished_batches, 1):
-            print(f"  [{idx}] {b_item['batch_info']} ({b_item['remaining']} data belum selesai / {b_item['total']} total)")
-
-        batch_choice = input(f"\nPilih nomor Batch [1-{len(unfinished_batches)}]: ").strip()
-        if batch_choice.isdigit() and 1 <= int(batch_choice) <= len(unfinished_batches):
-            selected_batch = unfinished_batches[int(batch_choice) - 1]
-            active_data = selected_batch["items"]
-            print(f"-> Filter aktif: Batch '{selected_batch['batch_info']}' ({len(active_data)} data)")
-
-    elif filter_choice == "4":
-        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-        active_data = raw_data
-        print(f"-> Memproses SEMUA data tanpa filter Petugas Cleaning ({len(active_data)} data).")
-    else:
-        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
-        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
-        active_data = data_cleaning_0
-        print(f"-> Memproses SEMUA data Petugas Cleaning = 0 ({len(active_data)} data).")
-
-    # 6. Ringkasan Pengerjaan
-    cached_count = sum(1 for it in active_data if is_done(it))
-    remaining_count = len(active_data) - cached_count
-
-    print("\nRINGKASAN STATUS PENGERJAAN:")
-    print(f" - Total Target Data : {len(active_data)}")
-    print(f" - Sudah di Cache    : {cached_count}")
-    print(f" - Sisa Diproses     : {remaining_count}")
-    print("=" * 65)
-
-    if remaining_count == 0:
-        print("\n[INFO] Seluruh data pada pilihan ini sudah selesai diproses sebelumnya!")
-        input("\nTekan ENTER untuk keluar...")
-        sys.exit(0)
-
-    # 7. Inisialisasi Playwright Browser
     profile_dir = os.path.join(BASE_DIR, "chrome_profile_anomali")
-    report_data = load_report_data()
-    report_map = {f"{r.get('link')}::{r.get('nama_usaha')}": idx for idx, r in enumerate(report_data)}
-
-    success_count = 0
-    fail_count = 0
-    skip_count = 0
+    processed_cache = load_cache()
 
     with sync_playwright() as p:
-        print("\nMembuka browser Chromium (menggunakan chrome_profile_anomali)...")
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=profile_dir,
-            headless=False,
-            no_viewport=True,
-            args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
-        )
+        browser_context = None
+        browser_page = None
+        first_login_done = False
 
-        page = context.pages[0] if context.pages else context.new_page()
-        page.goto("https://fasih-sm.bps.go.id/")
+        chosen_sources = None
+        raw_data = None
 
-        print("\n" + "=" * 65)
-        print(" Silakan LOGIN ke Fasih-SM melalui SSO BPS jika belum login.")
-        print(" Jika sudah masuk ke halaman dashboard Fasih-SM,")
-        print(" KEMBALI KE TERMINAL INI lalu tekan tombol ENTER untuk mulai.")
-        print("=" * 65)
-        input("Tekan ENTER untuk memulai proses otomatisasi...")
+        # ======================================================================
+        # LOOP UTAMA: PILIHAN SUMBER DATA & FILTER WILAYAH
+        # ======================================================================
+        while True:
+            # 2. Pilihan Sumber Data Google Sheets
+            if chosen_sources is None:
+                print("\nPILIHAN SUMBER DATA SPREADSHEET:")
+                print("  [1] Prioritas 1: Data Detail Anomali (https://docs.google.com/...gid=0) [DEFAULT]")
+                print("  [2] Prioritas 2: Data NTB (https://docs.google.com/...gid=293925488)")
+                print("  [3] GABUNGKAN SEMUA SHEET (Prioritas 1 + Prioritas 2)")
+                print("  [99] Keluar dari Bot")
 
-        total_target = len(active_data)
-        for idx, item in enumerate(active_data, 1):
-            link = item["link"]
-            nama = item["nama_usaha"]
-            desa = item["iddesa"]
-            kec = item.get("nama_kecamatan", "")
-            src_name = item.get("source_name", "")
-            cache_key = make_cache_key(link, nama)
+                src_choice = input("\nPilih sumber data [1/2/3/99] (Default: 1): ").strip()
+                if src_choice == "99":
+                    print("\nKeluar dari bot. Sampai jumpa!")
+                    break
+                elif src_choice == "2":
+                    chosen_sources = [SHEET_SOURCES[1]]
+                elif src_choice == "3":
+                    chosen_sources = SHEET_SOURCES
+                else:
+                    chosen_sources = [SHEET_SOURCES[0]]
 
-            # 1. Cek cache offline terlebih dahulu (instan 0ms)
-            if is_item_done(item, processed_cache):
-                print(f"[{idx}/{total_target}] [{kec} | {desa}] SKIP (Sudah di cache lokal): {nama}")
-                continue
-
-            # 2. Cek status realtime di Spreadsheet (apakah baru saja diselesaikan operator lain)
-            print(f"[{idx}/{total_target}] [{kec} | {desa}] Cek status live di Spreadsheet: {nama}...", end=" ", flush=True)
-            is_done_live, live_status = check_assignment_status_live(item, chosen_sources)
-            if is_done_live:
-                print(f"[SKIP REALTIME - SUDAH SELESAI ({live_status})]")
-                item["is_sheet_done"] = True
-                processed_cache.add(cache_key)
-                save_cache(processed_cache)
-                skip_count += 1
-                continue
-            else:
-                print("[BELUM SELESAI - LANJUT]")
-
-            while True:
-                print(f"\n[{idx}/{total_target}] [{src_name}] [{kec} | {desa}] Memproses: {nama}")
-                print(f"  Link: {link}")
-
-                status = None
-                msg = ""
-                try:
-                    res_status, res_msg = process_single_assignment(page, item)
-                    status = res_status
-                    msg = res_msg
-                except Exception as e:
-                    err_str = str(e)
-                    err_low = err_str.lower()
-                    # Cek apakah browser benar-benar ditutup atau dialihkan ke login SSO
-                    is_true_disconnect = False
-                    try:
-                        curr_u = (page.url or "").lower()
-                        if ("sso" in curr_u and ("login" in curr_u or "auth" in curr_u)) or ("/login" in curr_u):
-                            if "/app/assignment/" not in curr_u:
-                                is_true_disconnect = True
-                    except Exception:
-                        pass
-
-                    if "target closed" in err_low or "context closed" in err_low or "browser has been closed" in err_low or "err_internet_disconnected" in err_low or "err_connection_refused" in err_low or is_true_disconnect:
-                        status = "SESSION_LOST"
-                        msg = f"Koneksi terputus/sesi habis: {err_str}"
-                    else:
-                        print(f"  -> [ERROR] Terjadi exception: {e}")
-                        status = "FAILED_EXCEPTION"
-                        msg = str(e)
-
-                # JIKA TERDETEKSI SESI HABIS / VPN PUTUS:
-                if status == "SESSION_LOST":
-                    print(f"  -> [SESI/VPN TERPUTUS] {msg}")
-                    pause_for_relogin(page, link)
+                print(f"\n-> Memuat data dari: {', '.join([s['name'] for s in chosen_sources])}")
+                raw_data = fetch_data_from_sources(chosen_sources)
+                if not raw_data:
+                    print("\n[ERROR] Tidak dapat memuat data dari Google Sheets!")
+                    retry_load = input("Apakah ingin mencoba kembali? [Y/N] (Default: Y): ").strip().lower()
+                    if retry_load in ["n", "tidak", "no"]:
+                        break
+                    chosen_sources = None
                     continue
 
-                if status == "SUCCESS":
-                    processed_cache.add(cache_key)
-                    save_cache(processed_cache)
-                    success_count += 1
-                    print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
-                    # Sinkronisasi live ke Google Sheet & pewarnaan hijau
-                    sync_to_google_sheet(item, status="SELESAI")
-                elif status.startswith("SKIP_"):
+                print(f"\nTotal data berhasil diambil dari Google Sheets: {len(raw_data)} baris.")
+
+                # Tampilkan info sinkronisasi live
+                active_source_names = [s["name"] for s in chosen_sources]
+                matched_urls = []
+                for s_name in active_source_names:
+                    u = ""
+                    for k, v in urls_map.items():
+                        if v and (k.lower() in s_name.lower() or s_name.lower() in k.lower()):
+                            u = v.strip()
+                            break
+                    if not u and gas_url:
+                        u = gas_url
+                    if u:
+                        matched_urls.append((s_name, u))
+
+                if matched_urls:
+                    print(f"[LIVE SYNC SPREADSHEET: AKTIF]")
+                    for s_n, u_val in matched_urls:
+                        m_url = u_val[:38] + "..." if len(u_val) > 42 else u_val
+                        print(f" -> '{s_n}': {m_url}")
+                    print(f" -> Baris yang selesai otomatis ditandai 'SELESAI ({operator_name})' dan diwarnai HIJAU di Google Sheet.")
+
+                # Sinkronkan Cache Progres
+                sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+
+            def is_done(it):
+                return is_item_done(it, processed_cache)
+
+            # ==================================================================
+            # LOOP MENU FILTER DATA
+            # ==================================================================
+            back_to_source = False
+            active_data = None
+
+            while True:
+                data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
+                print("\nPILIHAN FILTER DATA:")
+                print("  [0] SEMUA DATA (Petugas Cleaning = 0) [DEFAULT]")
+                print("  [1] Filter Berdasarkan Kecamatan [Bisa Multi-Pilih cth: 1,2,3 atau 1-4]")
+                print("  [2] Filter Berdasarkan ID Desa (iddesa) [Bisa Multi-Pilih]")
+                print("  [3] Filter Berdasarkan Batch (batch_info) [Bisa Multi-Pilih]")
+                print("  [4] Tampilkan Semua Petugas Cleaning (Termasuk non-0)")
+                print("  [00] Ganti Sumber Data Spreadsheet")
+
+                filter_choice = input("\nPilih nomor filter [0/1/2/3/4] (Default: 0, 00: Ganti Sumber): ").strip()
+                if filter_choice == "00":
+                    chosen_sources = None
+                    back_to_source = True
+                    break
+
+                if filter_choice == "1":
+                    # LOOP DAFTAR KECAMATAN
+                    back_to_filter = False
+                    while True:
+                        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
+                        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
+                        all_idkecs = sorted(list(set(d["idkec"] for d in data_cleaning_0 if d.get("idkec"))))
+                        unfinished_kecs = []
+                        for idk in all_idkecs:
+                            items_k = [d for d in data_cleaning_0 if d.get("idkec") == idk]
+                            total_k = len(items_k)
+                            done_k = sum(1 for it in items_k if is_done(it))
+                            rem_k = total_k - done_k
+                            if rem_k > 0:
+                                nama_k = items_k[0].get("nama_kecamatan", idk)
+                                unfinished_kecs.append({
+                                    "idkec": idk,
+                                    "nama_kecamatan": nama_k,
+                                    "total": total_k,
+                                    "done": done_k,
+                                    "remaining": rem_k,
+                                    "items": items_k
+                                })
+
+                        if not unfinished_kecs:
+                            print("\n[INFO] SELURUH KECAMATAN PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
+                            input("\nTekan ENTER untuk kembali ke menu filter...")
+                            back_to_filter = True
+                            break
+
+                        completed_kecs_count = len(all_idkecs) - len(unfinished_kecs)
+                        print(f"\nDAFTAR KECAMATAN (Hanya yang belum selesai):")
+                        if completed_kecs_count > 0:
+                            print(f"(* {completed_kecs_count} kecamatan yang sudah selesai 100% otomatis disembunyikan)")
+
+                        for idx, k_info in enumerate(unfinished_kecs, 1):
+                            print(f"  [{idx}] Kecamatan {k_info['nama_kecamatan']} [{k_info['idkec']}] ({k_info['remaining']} data belum selesai / {k_info['total']} total)")
+                        print("  [00] Kembali ke Menu Filter Data")
+
+                        kec_input = input(f"\nPilih nomor Kecamatan [1-{len(unfinished_kecs)}, bisa multi cth: 1,2,3 atau 1-4] (00: Kembali): ").strip()
+                        if kec_input == "00":
+                            back_to_filter = True
+                            break
+
+                        sel_indices = parse_multi_choice(kec_input, len(unfinished_kecs))
+                        if sel_indices == "00":
+                            back_to_filter = True
+                            break
+                        if not sel_indices:
+                            print("[Peringatan] Input tidak valid. Silakan masukkan nomor kecamatan yang tersedia.")
+                            continue
+
+                        if len(sel_indices) > 1:
+                            # Multi-kecamatan terpilih
+                            sel_kecs = [unfinished_kecs[i - 1] for i in sel_indices]
+                            kec_names = [k["nama_kecamatan"] for k in sel_kecs]
+                            combined_items = []
+                            for k in sel_kecs:
+                                combined_items.extend(k["items"])
+                            active_data = combined_items
+                            print(f"\n-> Filter aktif: {len(sel_kecs)} Kecamatan terpilih ({', '.join(kec_names)}) - Total {len(active_data)} data")
+                            break
+                        else:
+                            # 1 Kecamatan terpilih -> Buka pilihan sub-desa
+                            sel_kec = unfinished_kecs[sel_indices[0] - 1]
+                            back_to_kecs = False
+
+                            while True:
+                                sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
+                                data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+                                kec_items = [d for d in data_cleaning_0 if d.get("idkec") == sel_kec["idkec"]]
+
+                                all_desas_in_kec = sorted(list(set(d["iddesa"] for d in kec_items if d.get("iddesa"))))
+                                unfinished_desas_in_kec = []
+                                for did in all_desas_in_kec:
+                                    items_d = [d for d in kec_items if d.get("iddesa") == did]
+                                    t_d = len(items_d)
+                                    d_d = sum(1 for it in items_d if is_done(it))
+                                    r_d = t_d - d_d
+                                    if r_d > 0:
+                                        n_d = items_d[0].get("nama_desa", "")
+                                        label_d = f"Desa {did}" + (f" - {n_d}" if n_d else "")
+                                        unfinished_desas_in_kec.append({
+                                            "iddesa": did,
+                                            "label": label_d,
+                                            "remaining": r_d,
+                                            "items": items_d
+                                        })
+
+                                if not unfinished_desas_in_kec:
+                                    print(f"\n[INFO] Seluruh desa di Kecamatan {sel_kec['nama_kecamatan']} sudah 100% selesai!")
+                                    input("\nTekan ENTER untuk kembali...")
+                                    back_to_kecs = True
+                                    break
+
+                                if len(unfinished_desas_in_kec) > 1:
+                                    print(f"\nPILIHAN WILAYAH DI KECAMATAN {sel_kec['nama_kecamatan'].upper()}:")
+                                    print(f"  [0] PROSES SEMUA DESA DI KECAMATAN INI ({sel_kec['remaining']} data belum selesai) [DEFAULT]")
+                                    for didx, d_sub in enumerate(unfinished_desas_in_kec, 1):
+                                        print(f"  [{didx}] {d_sub['label']} ({d_sub['remaining']} data)")
+                                    print("  [00] Kembali ke Daftar Kecamatan")
+
+                                    sub_choice = input(f"Pilih opsi desa [0-{len(unfinished_desas_in_kec)}, bisa multi cth: 1,2] (Default: 0, 00: Kembali): ").strip()
+                                    if sub_choice == "00":
+                                        back_to_kecs = True
+                                        break
+                                    if not sub_choice or sub_choice == "0":
+                                        active_data = kec_items
+                                        print(f"-> Filter aktif: Seluruh Kecamatan {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
+                                        break
+
+                                    sel_desa_idx = parse_multi_choice(sub_choice, len(unfinished_desas_in_kec))
+                                    if sel_desa_idx == "00":
+                                        back_to_kecs = True
+                                        break
+                                    if not sel_desa_idx:
+                                        print("[Peringatan] Input desa tidak valid.")
+                                        continue
+
+                                    sel_sub_desas = [unfinished_desas_in_kec[i - 1] for i in sel_desa_idx]
+                                    desa_labels = [d["label"] for d in sel_sub_desas]
+                                    comb_desa_items = []
+                                    for d in sel_sub_desas:
+                                        comb_desa_items.extend(d["items"])
+                                    active_data = comb_desa_items
+                                    print(f"-> Filter aktif: {len(sel_sub_desas)} Desa terpilih ({', '.join(desa_labels)}) di Kec. {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
+                                    break
+                                else:
+                                    active_data = kec_items
+                                    print(f"-> Filter aktif: Kecamatan {sel_kec['nama_kecamatan']} ({len(active_data)} data)")
+                                    break
+
+                            if back_to_kecs:
+                                continue
+                            else:
+                                break
+
+                    if back_to_filter:
+                        continue
+                    if active_data:
+                        break
+
+                elif filter_choice == "2":
+                    # LOOP DAFTAR ID DESA
+                    back_to_filter = False
+                    while True:
+                        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
+                        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
+                        all_desas = sorted(list(set(d["iddesa"] for d in data_cleaning_0 if d.get("iddesa"))))
+                        unfinished_desas = []
+                        for did in all_desas:
+                            items_d = [d for d in data_cleaning_0 if d.get("iddesa") == did]
+                            t_d = len(items_d)
+                            d_d = sum(1 for it in items_d if is_done(it))
+                            r_d = t_d - d_d
+                            if r_d > 0:
+                                n_d = items_d[0].get("nama_desa", "")
+                                k_name = items_d[0].get("nama_kecamatan", "")
+                                label_parts = [f"Desa {did}"]
+                                if n_d:
+                                    label_parts.append(n_d)
+                                if k_name:
+                                    label_parts.append(f"(Kec. {k_name})")
+                                label_d = " - ".join(label_parts)
+                                unfinished_desas.append({
+                                    "iddesa": did,
+                                    "label": label_d,
+                                    "total": t_d,
+                                    "done": d_d,
+                                    "remaining": r_d,
+                                    "items": items_d
+                                })
+
+                        if not unfinished_desas:
+                            print("\n[INFO] SELURUH DESA PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
+                            input("\nTekan ENTER untuk kembali...")
+                            back_to_filter = True
+                            break
+
+                        completed_desas_count = len(all_desas) - len(unfinished_desas)
+                        print("\nDAFTAR ID DESA (Hanya yang belum selesai):")
+                        if completed_desas_count > 0:
+                            print(f"(* {completed_desas_count} desa yang sudah selesai 100% otomatis disembunyikan)")
+
+                        for idx, d_info in enumerate(unfinished_desas, 1):
+                            print(f"  [{idx}] {d_info['label']} ({d_info['remaining']} data belum selesai / {d_info['total']} total)")
+                        print("  [00] Kembali ke Menu Filter Data")
+
+                        desa_choice = input(f"\nPilih nomor ID Desa [1-{len(unfinished_desas)}, bisa multi cth: 1,2,3 atau 1-4] (00: Kembali): ").strip()
+                        if desa_choice == "00":
+                            back_to_filter = True
+                            break
+
+                        sel_desa_idx = parse_multi_choice(desa_choice, len(unfinished_desas))
+                        if sel_desa_idx == "00":
+                            back_to_filter = True
+                            break
+                        if not sel_desa_idx:
+                            print("[Peringatan] Input tidak valid. Silakan pilih nomor desa yang tersedia.")
+                            continue
+
+                        sel_desas = [unfinished_desas[i - 1] for i in sel_desa_idx]
+                        comb_items = []
+                        for d in sel_desas:
+                            comb_items.extend(d["items"])
+                        active_data = comb_items
+                        if len(sel_desas) == 1:
+                            print(f"-> Filter aktif: {sel_desas[0]['label']} ({len(active_data)} data)")
+                        else:
+                            print(f"-> Filter aktif: {len(sel_desas)} Desa terpilih - Total {len(active_data)} data")
+                        break
+
+                    if back_to_filter:
+                        continue
+                    if active_data:
+                        break
+
+                elif filter_choice == "3":
+                    # LOOP DAFTAR BATCH
+                    back_to_filter = False
+                    while True:
+                        sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=False)
+                        data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+
+                        all_batches = sorted(list(set(d["batch_info"] for d in data_cleaning_0 if d.get("batch_info"))))
+                        unfinished_batches = []
+                        for b_info in all_batches:
+                            items_b = [d for d in data_cleaning_0 if d.get("batch_info") == b_info]
+                            t_b = len(items_b)
+                            d_b = sum(1 for it in items_b if is_done(it))
+                            r_b = t_b - d_b
+                            if r_b > 0:
+                                unfinished_batches.append({
+                                    "batch_info": b_info,
+                                    "total": t_b,
+                                    "done": d_b,
+                                    "remaining": r_b,
+                                    "items": items_b
+                                })
+
+                        if not unfinished_batches:
+                            print("\n[INFO] SELURUH BATCH PADA PILIHAN INI SUDAH 100% SELESAI DIPROSES!")
+                            input("\nTekan ENTER untuk kembali...")
+                            back_to_filter = True
+                            break
+
+                        print("\nDAFTAR BATCH (Hanya yang belum selesai):")
+                        for idx, b_item in enumerate(unfinished_batches, 1):
+                            print(f"  [{idx}] {b_item['batch_info']} ({b_item['remaining']} data belum selesai / {b_item['total']} total)")
+                        print("  [00] Kembali ke Menu Filter Data")
+
+                        batch_choice = input(f"\nPilih nomor Batch [1-{len(unfinished_batches)}, bisa multi cth: 1,2] (00: Kembali): ").strip()
+                        if batch_choice == "00":
+                            back_to_filter = True
+                            break
+
+                        sel_batch_idx = parse_multi_choice(batch_choice, len(unfinished_batches))
+                        if sel_batch_idx == "00":
+                            back_to_filter = True
+                            break
+                        if not sel_batch_idx:
+                            print("[Peringatan] Input tidak valid. Silakan pilih nomor batch yang tersedia.")
+                            continue
+
+                        sel_batches = [unfinished_batches[i - 1] for i in sel_batch_idx]
+                        comb_items = []
+                        for b in sel_batches:
+                            comb_items.extend(b["items"])
+                        active_data = comb_items
+                        batch_names = [b["batch_info"] for b in sel_batches]
+                        print(f"-> Filter aktif: {len(sel_batches)} Batch terpilih ({', '.join(batch_names)}) - Total {len(active_data)} data")
+                        break
+
+                    if back_to_filter:
+                        continue
+                    if active_data:
+                        break
+
+                elif filter_choice == "4":
+                    sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+                    active_data = raw_data
+                    print(f"-> Memproses SEMUA data tanpa filter Petugas Cleaning ({len(active_data)} data).")
+                    break
+                elif filter_choice == "0" or not filter_choice:
+                    sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+                    data_cleaning_0 = [d for d in raw_data if d["petugas_cleaning"] == "0"]
+                    active_data = data_cleaning_0
+                    print(f"-> Memproses SEMUA data Petugas Cleaning = 0 ({len(active_data)} data).")
+                    break
+                else:
+                    print("[Peringatan] Pilihan tidak valid.")
+                    continue
+
+            if back_to_source:
+                continue
+
+            if not active_data:
+                continue
+
+            # ==================================================================
+            # 6. RINGKASAN PENGERJAAN
+            # ==================================================================
+            cached_count = sum(1 for it in active_data if is_done(it))
+            remaining_count = len(active_data) - cached_count
+
+            print("\nRINGKASAN STATUS PENGERJAAN:")
+            print(f" - Total Target Data : {len(active_data)}")
+            print(f" - Sudah di Cache    : {cached_count}")
+            print(f" - Sisa Diproses     : {remaining_count}")
+            print("=" * 65)
+
+            if remaining_count == 0:
+                print("\n[INFO] Seluruh data pada pilihan ini sudah selesai diproses sebelumnya!")
+                input("\nTekan ENTER untuk kembali ke menu pilihan...")
+                continue
+
+            # ==================================================================
+            # 7. INISIALISASI BROWSER & EKSEKUSI PENGERJAAN
+            # ==================================================================
+            if browser_context is None:
+                print("\nMembuka browser Chromium (menggunakan chrome_profile_anomali)...")
+                browser_context = p.chromium.launch_persistent_context(
+                    user_data_dir=profile_dir,
+                    headless=False,
+                    no_viewport=True,
+                    args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
+                )
+                browser_page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
+                browser_page.goto("https://fasih-sm.bps.go.id/")
+
+            if not first_login_done:
+                print("\n" + "=" * 65)
+                print(" Silakan LOGIN ke Fasih-SM melalui SSO BPS jika belum login.")
+                print(" Jika sudah masuk ke halaman dashboard Fasih-SM,")
+                print(" KEMBALI KE TERMINAL INI lalu tekan tombol ENTER untuk mulai.")
+                print("=" * 65)
+                input("Tekan ENTER untuk memulai proses otomatisasi...")
+                first_login_done = True
+
+            report_data = load_report_data()
+            report_map = {f"{r.get('link')}::{r.get('nama_usaha')}": idx for idx, r in enumerate(report_data)}
+
+            success_count = 0
+            fail_count = 0
+            skip_count = 0
+
+            total_target = len(active_data)
+            for idx, item in enumerate(active_data, 1):
+                link = item["link"]
+                nama = item["nama_usaha"]
+                desa = item["iddesa"]
+                kec = item.get("nama_kecamatan", "")
+                src_name = item.get("source_name", "")
+                cache_key = make_cache_key(link, nama)
+
+                # 1. Cek cache offline terlebih dahulu (instan 0ms)
+                if is_item_done(item, processed_cache):
+                    print(f"[{idx}/{total_target}] [{kec} | {desa}] SKIP (Sudah di cache lokal): {nama}")
+                    continue
+
+                # 2. Cek status realtime di Spreadsheet (apakah baru saja diselesaikan operator lain)
+                print(f"[{idx}/{total_target}] [{kec} | {desa}] Cek status live di Spreadsheet: {nama}...", end=" ", flush=True)
+                is_done_live, live_status = check_assignment_status_live(item, chosen_sources)
+                if is_done_live:
+                    print(f"[SKIP REALTIME - SUDAH SELESAI ({live_status})]")
+                    item["is_sheet_done"] = True
                     processed_cache.add(cache_key)
                     save_cache(processed_cache)
                     skip_count += 1
-                    print(f"  -> [DILEWATI] {msg}")
-                    sync_to_google_sheet(item, status=f"DILEWATI ({msg})")
+                    continue
                 else:
-                    fail_count += 1
-                    print(f"  -> [GAGAL] {msg}")
+                    print("[BELUM SELESAI - LANJUT]")
 
-                # Catat ke laporan
-                record = {
-                    "source_name": src_name,
-                    "idkec": item.get("idkec", ""),
-                    "nama_kecamatan": kec,
-                    "iddesa": desa,
-                    "nama_desa": item.get("nama_desa", ""),
-                    "nama_usaha": nama,
-                    "batch_info": item.get("batch_info", ""),
-                    "petugas_cleaning": item.get("petugas_cleaning", ""),
-                    "catatan_fasih": item.get("catatan_fasih", ""),
-                    "remark_text": DEFAULT_REMARK_TEXT,
-                    "status": status,
-                    "keterangan": msg,
-                    "link": link,
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
+                while True:
+                    print(f"\n[{idx}/{total_target}] [{src_name}] [{kec} | {desa}] Memproses: {nama}")
+                    print(f"  Link: {link}")
 
-                if cache_key in report_map:
-                    report_data[report_map[cache_key]] = record
-                else:
-                    report_map[cache_key] = len(report_data)
-                    report_data.append(record)
+                    status = None
+                    msg = ""
+                    try:
+                        res_status, res_msg = process_single_assignment(browser_page, item)
+                        status = res_status
+                        msg = res_msg
+                    except Exception as e:
+                        err_str = str(e)
+                        err_low = err_str.lower()
+                        # Cek apakah browser benar-benar ditutup atau dialihkan ke login SSO
+                        is_true_disconnect = False
+                        try:
+                            curr_u = (browser_page.url or "").lower()
+                            if ("sso" in curr_u and ("login" in curr_u or "auth" in curr_u)) or ("/login" in curr_u):
+                                if "/app/assignment/" not in curr_u:
+                                    is_true_disconnect = True
+                        except Exception:
+                            pass
 
-                save_report_data(report_data)
+                        if "target closed" in err_low or "context closed" in err_low or "browser has been closed" in err_low or "err_internet_disconnected" in err_low or "err_connection_refused" in err_low or is_true_disconnect:
+                            status = "SESSION_LOST"
+                            msg = f"Koneksi terputus/sesi habis: {err_str}"
+                        else:
+                            print(f"  -> [ERROR] Terjadi exception: {e}")
+                            status = "FAILED_EXCEPTION"
+                            msg = str(e)
+
+                    # JIKA TERDETEKSI SESI HABIS / VPN PUTUS:
+                    if status == "SESSION_LOST":
+                        print(f"  -> [SESI/VPN TERPUTUS] {msg}")
+                        pause_for_relogin(browser_page, link)
+                        continue
+
+                    if status == "SUCCESS":
+                        processed_cache.add(cache_key)
+                        save_cache(processed_cache)
+                        success_count += 1
+                        print(f"  -> [BERHASIL] Remark '#0' ditambahkan & form berhasil dikirim dan dikonfirmasi!")
+                        # Sinkronisasi live ke Google Sheet & pewarnaan hijau
+                        sync_to_google_sheet(item, status="SELESAI")
+                    elif status.startswith("SKIP_"):
+                        processed_cache.add(cache_key)
+                        save_cache(processed_cache)
+                        skip_count += 1
+                        print(f"  -> [DILEWATI] {msg}")
+                        sync_to_google_sheet(item, status=f"DILEWATI ({msg})")
+                    else:
+                        fail_count += 1
+                        print(f"  -> [GAGAL] {msg}")
+
+                    # Catat ke laporan
+                    record = {
+                        "source_name": src_name,
+                        "idkec": item.get("idkec", ""),
+                        "nama_kecamatan": kec,
+                        "iddesa": desa,
+                        "nama_desa": item.get("nama_desa", ""),
+                        "nama_usaha": nama,
+                        "batch_info": item.get("batch_info", ""),
+                        "petugas_cleaning": item.get("petugas_cleaning", ""),
+                        "catatan_fasih": item.get("catatan_fasih", ""),
+                        "remark_text": DEFAULT_REMARK_TEXT,
+                        "status": status,
+                        "keterangan": msg,
+                        "link": link,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+
+                    if cache_key in report_map:
+                        report_data[report_map[cache_key]] = record
+                    else:
+                        report_map[cache_key] = len(report_data)
+                        report_data.append(record)
+
+                    save_report_data(report_data)
+                    break
+
+                time.sleep(0.3)
+
+            print("\n" + "=" * 65)
+            print(" SEMUA TARGET PROSES SELESAI!")
+            print(f" - Berhasil : {success_count}")
+            print(f" - Dilewati : {skip_count}")
+            print(f" - Gagal    : {fail_count}")
+            print(f" Laporan disimpan di: {REPORT_EXCEL}")
+            print("=" * 65)
+
+            # ==================================================================
+            # 8. OPSI MENGULANG / MEMPROSES WILAYAH LAIN (TANPA KELUAR)
+            # ==================================================================
+            repeat_choice = input("\nApakah ingin memproses wilayah / data lainnya? [Y/N] (Default: Y): ").strip().lower()
+            if repeat_choice in ["n", "tidak", "no", "keluar", "exit"]:
+                print("\nMenutup sesi bot. Terima kasih!")
+                if browser_context:
+                    try:
+                        browser_context.close()
+                    except Exception:
+                        pass
                 break
-
-            time.sleep(0.3)
-
-        print("\n" + "=" * 65)
-        print(" SEMUA TARGET PROSES SELESAI!")
-        print(f" - Berhasil : {success_count}")
-        print(f" - Dilewati : {skip_count}")
-        print(f" - Gagal    : {fail_count}")
-        print(f" Laporan disimpan di: {REPORT_EXCEL}")
-        print("=" * 65)
-        input("\nTekan ENTER untuk keluar...")
+            else:
+                print("\n-> Menyinkronkan data status terbaru dari Google Sheets...")
+                raw_data = fetch_data_from_sources(chosen_sources)
+                sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True)
+                # Loop kembali ke menu filter data (browser tetap terbuka & sesi login tetap aktif!)
 
 if __name__ == "__main__":
     main()
