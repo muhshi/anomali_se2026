@@ -1671,22 +1671,42 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' && el.offsetWidth > 0 && el.offsetHeight > 0;
             }
 
-            function checkBadgeNumber(btn) {
-                if (!btn) return 0;
-                // Deteksi elemen badge spesifik Fasih-SM:
-                // <div class="tw:-right-2 tw:-top-2 tw:absolute"><div class="... tw:rounded-full ...">1</div></div>
-                const badgeEl = btn.querySelector('div[class*="-top-"], div[class*="-right-"], div[class*="rounded-full"], span[class*="rounded-full"], [class*="badge"]');
-                if (badgeEl) {
-                    const txt = (badgeEl.innerText || badgeEl.textContent || "").trim();
-                    const n = parseInt(txt, 10);
-                    if (!isNaN(n) && n > 0) return n;
+            function checkBadgeNumber(targetEl, catBtns) {
+                const candidates = [targetEl];
+                if (catBtns && Array.isArray(catBtns)) {
+                    candidates.push(...catBtns);
                 }
-                const allTexts = Array.from(btn.querySelectorAll('div, span'));
-                for (const d of allTexts) {
-                    const t = (d.innerText || d.textContent || "").trim();
-                    if (/^\d+$/.test(t)) {
-                        const n = parseInt(t, 10);
-                        if (n > 0) return n;
+                if (targetEl && targetEl.parentElement) {
+                    candidates.push(targetEl.parentElement);
+                    if (targetEl.parentElement.parentElement) {
+                        candidates.push(targetEl.parentElement.parentElement);
+                    }
+                }
+                const row = targetEl ? targetEl.closest('div[id^="nilai_"], div[class*="rounded-lg"], div[class*="py-2"], tr, [role="row"]') : null;
+                if (row) {
+                    candidates.push(row);
+                }
+
+                for (const cand of candidates) {
+                    if (!cand) continue;
+                    // 1. Cari elemen badge dengan class spesifik Tailwind Fasih-SM:
+                    // <div class="tw:-right-2 tw:-top-2 tw:absolute"><div class="... tw:rounded-full ...">1</div></div>
+                    const badges = Array.from(cand.querySelectorAll('div[class*="-top-"], div[class*="-right-"], div[class*="rounded-full"], span[class*="rounded-full"], [class*="badge"]'));
+                    for (const b of badges) {
+                        const txt = (b.innerText || b.textContent || '').trim();
+                        if (/^\d+$/.test(txt)) {
+                            const n = parseInt(txt, 10);
+                            if (n > 0) return n;
+                        }
+                    }
+                    // 2. Cari anak teks angka murni yang berada dalam div absolut
+                    const absDivs = Array.from(cand.querySelectorAll('div[class*="absolute"] *'));
+                    for (const ad of absDivs) {
+                        const txt = (ad.innerText || ad.textContent || '').trim();
+                        if (/^\d+$/.test(txt)) {
+                            const n = parseInt(txt, 10);
+                            if (n > 0) return n;
+                        }
                     }
                 }
                 return 0;
@@ -1699,12 +1719,21 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             if (rowContainer) {
                 const catBtns = Array.from(rowContainer.querySelectorAll('button[title="Catatan"], button[aria-label="Catatan"], [role="button"][title="Catatan"], button[title*="Catatan" i], button[aria-label*="Catatan" i]'));
                 if (catBtns.length > 0) {
+                    // Cek apakah di row container atau di salah satu tombol catatan sudah ada badge aktif
+                    const badgeCount = checkBadgeNumber(catBtns[0], catBtns);
+                    if (badgeCount > 0) {
+                        return { success: true, method: 'badge_already_present', dist: 0, badge_count: badgeCount, already_has_remark: true };
+                    }
+
                     // Cari tombol yang benar-benar visible di layar desktop
                     const targetBtn = catBtns.find(isVisible) || catBtns[catBtns.length - 1] || catBtns[0];
                     if (targetBtn) {
-                        const badgeCount = checkBadgeNumber(targetBtn);
+                        const btnBadge = checkBadgeNumber(targetBtn, catBtns);
+                        if (btnBadge > 0) {
+                            return { success: true, method: 'badge_already_present', dist: 0, badge_count: btnBadge, already_has_remark: true };
+                        }
                         clickEl(targetBtn);
-                        return { success: true, method: 'row_container_direct', dist: 0, badge_count: badgeCount };
+                        return { success: true, method: 'row_container_direct', dist: 0, badge_count: 0 };
                     }
                 }
             }
@@ -1722,9 +1751,12 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 if (catBtn) {
                     const btnRect = catBtn.getBoundingClientRect();
                     if (btnRect.top >= targetRect.top - 20 && btnRect.top <= targetRect.top + 200) {
-                        const badgeCount = checkBadgeNumber(catBtn);
+                        const badgeCount = checkBadgeNumber(catBtn, [catBtn]);
+                        if (badgeCount > 0) {
+                            return { success: true, method: 'badge_already_present', dist: Math.abs(btnRect.top - targetRect.top), badge_count: badgeCount, already_has_remark: true };
+                        }
                         clickEl(catBtn);
-                        return { success: true, method: 'isolated_container', dist: Math.abs(btnRect.top - targetRect.top), badge_count: badgeCount };
+                        return { success: true, method: 'isolated_container', dist: Math.abs(btnRect.top - targetRect.top), badge_count: 0 };
                     }
                 }
                 p = p.parentElement;
@@ -1755,19 +1787,24 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             }
 
             if (closestBtn) {
-                const badgeCount = checkBadgeNumber(closestBtn);
+                const badgeCount = checkBadgeNumber(closestBtn, [closestBtn]);
+                if (badgeCount > 0) {
+                    return { success: true, method: 'badge_already_present', dist: minDist, badge_count: badgeCount, already_has_remark: true };
+                }
                 clickEl(closestBtn);
-                return { success: true, method: 'spatial_below_target', dist: minDist, badge_count: badgeCount };
+                return { success: true, method: 'spatial_below_target', dist: minDist, badge_count: 0 };
             }
 
             return { success: false, reason: 'catatan_btn_not_near_target' };
         }''', q_num_found)
 
         if res_click and res_click.get("success"):
-            btn_opened = True
             badge_cnt = res_click.get("badge_count", 0)
-            if badge_cnt > 0:
-                print(f"     [INFO] Terdeteksi badge catatan aktif ({badge_cnt} catatan tersimpan) pada tombol Catatan {q_num_found}!")
+            if res_click.get("already_has_remark") or badge_cnt > 0:
+                print(f"     [INFO] Terdeteksi badge catatan aktif ({badge_cnt} catatan tersimpan) pada pertanyaan {q_num_found}!")
+                return True, f"ALREADY_EXISTS: Pertanyaan {q_num_found} sudah memiliki badge catatan ({badge_cnt} catatan)"
+
+            btn_opened = True
             print(f"     [OK] Tombol Catatan {q_num_found} berhasil diklik ({res_click.get('method')}, selisih vertikal: {res_click.get('dist', 0):.0f}px).")
             break
 
@@ -1799,7 +1836,12 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
             const scope = activeDialog || document.body;
             const scopeText = (scope.innerText || scope.textContent || '').toLowerCase();
             const txtLower = (txt || '').trim().toLowerCase();
-            let alreadyHas = scopeText.includes(txtLower);
+            
+            // Cek apakah ada catatan sebelumnya di popover:
+            let alreadyHas = scopeText.includes(txtLower) || 
+                             scopeText.includes('#0') || 
+                             scopeText.includes('petugas') || 
+                             scope.querySelector('div[class*="chat"], div[class*="comment"], div[class*="bubble"]') !== null;
 
             const textareas = Array.from(scope.querySelectorAll('textarea, input[type="text"]')).filter(el => {
                 const s = window.getComputedStyle(el);
@@ -1811,6 +1853,12 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
                 if ((targetInput.value || '').toLowerCase().includes(txtLower)) {
                     alreadyHas = true;
                 }
+                
+                // JIKA SUDAH ADA CATATAN: JANGAN KETIK & JANGAN SIMPAN ULANG!
+                if (alreadyHas) {
+                    return { success: true, already_had_remark: true };
+                }
+
                 targetInput.focus();
                 
                 const proto = targetInput.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -1823,16 +1871,21 @@ def add_remark_27a(page, remark_text=DEFAULT_REMARK_TEXT):
 
                 targetInput.dispatchEvent(new Event('input', { bubbles: true }));
                 targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-                return { success: true, tag: targetInput.tagName, already_had_remark: alreadyHas };
+                return { success: true, tag: targetInput.tagName, already_had_remark: false };
             }
             return { success: false, already_had_remark: alreadyHas };
         }''', remark_text)
 
+        if res_fill and res_fill.get("already_had_remark"):
+            print(f"     [INFO] Catatan SUDAH ADA sebelumnya pada popover pertanyaan {q_num_found}!")
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            return True, f"ALREADY_EXISTS: Pertanyaan {q_num_found} sudah memiliki catatan di popover"
+
         if res_fill and res_fill.get("success"):
             text_filled = True
-        if res_fill and res_fill.get("already_had_remark"):
-            already_had_remark = True
-            print(f"     [INFO] Catatan '{remark_text}' SUDAH ADA sebelumnya pada popover pertanyaan {q_num_found}!")
     except Exception:
         pass
 
