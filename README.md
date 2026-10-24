@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Ketahanan Jaringan & Auto-Retry Unduh Spreadsheet Live (`tambah_remark_27a.py`)**:
+  - Menambahkan mekanisme *auto-retry* 3 kali dengan jeda waktu (*backoff*) 2 detik pada fungsi `fetch_single_sheet` saat mengunduh data live Google Spreadsheet.
+  - Menangani kendala fluktuasi jaringan / DNS resolver Windows (`[Errno 11001] getaddrinfo failed`) yang sering terjadi sesaat ketika koneksi Wi-Fi/VPN BPS berkedip atau berganti jaringan, sehingga bot tidak langsung terlempar ke file backup lokal jika koneksi pulih dalam hitungan detik.
+  - Mempertahankan sistem *fail-safe* cadangan: jika koneksi internet memang mati total setelah 3x percobaan, bot secara otomatis beralih menggunakan backup CSV lokal tanpa menghentikan eksekusi (*graceful fallback*).
 - **Perbaikan Total Sistem Sinkronisasi & Pembersihan Cache Hantu (`tambah_remark_27a.py`)**:
   - Mengimplementasikan prinsip *Single Source of Truth* (Kebenaran Tunggal): Status penentuan tugas SELESAI kini murni bersumber dari Google Spreadsheet live (status `SELESAI`) dan bukti laporan pengerjaan lokal yang sukses (`laporan_tambah_remark.json`).
   - Menghilangkan anomali cache hantu yang sebelumnya menyebabkan 6.200+ data kosong di Google Sheets keliru dianggap selesai dan dilewati oleh bot.

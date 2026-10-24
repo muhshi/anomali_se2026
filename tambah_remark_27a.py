@@ -726,15 +726,23 @@ def fetch_single_sheet(source_info):
     )
 
     content = None
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            content = resp.read().decode("utf-8")
-    except Exception as e:
-        print(f"   [Warning] Gagal mengunduh live: {e}")
-        if os.path.exists(backup_file):
-            print(f"   -> Menggunakan file backup lokal: {backup_file}")
-            with open(backup_file, "r", encoding="utf-8") as f:
-                content = f.read()
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                content = resp.read().decode("utf-8")
+                break
+        except Exception as e:
+            if attempt < 3:
+                time.sleep(2)
+                continue
+            print(f"   [Warning] Gagal mengunduh live: {e}")
+            if os.path.exists(backup_file):
+                print(f"   -> Menggunakan file backup lokal: {backup_file}")
+                try:
+                    with open(backup_file, "r", encoding="utf-8") as f:
+                        content = f.read()
+                except Exception:
+                    pass
 
     if not content:
         return []
