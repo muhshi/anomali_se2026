@@ -53,6 +53,11 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Fix Kritis False-Positive Skip Realtime & Ekstraksi UUID Assignment (`tambah_remark_27a.py`)**:
+  - Memperbaiki bug fatal pada fungsi `check_assignment_status_live` yang sebelumnya menyebabkan ratusan data (seperti 202 data di Kecamatan Bonang) keliru dilewati (*falsely skipped*) dengan status `[SKIP REALTIME - SUDAH SELESAI]`.
+  - Masalah terjadi karena link berakhiran `/edit` menyebabkan ekstraksi UUID via `split('/')[-1]` hanya menghasilkan kata `'edit'`, yang memicu fallback pencarian query status hanya berdasarkan kata pertama nama usaha (misal kata `'jual'`, `'warung'`, `'toko'`, `'kios'`). Akibatnya, jika ada usaha lain di kecamatan berbeda dengan kata tersebut yang sudah selesai, baris aktif keliru dianggap sudah selesai dan di-skip tanpa diproses.
+  - Memperbaiki ekstraksi UUID menggunakan regex presisi 36 karakter `[0-9a-fA-F-]{36}`, menghapus fallback query kata generik, serta menambahkan pencocokan spesifik `col_nama` dan `col_status` untuk assignment multi-usaha.
+  - Mengemas ulang arsip distribusi `Bot-Tambah-Remark-SE2026.zip` dengan perbaikan ini.
 - **Ketahanan Jaringan & Auto-Retry Unduh Spreadsheet Live (`tambah_remark_27a.py`)**:
   - Menambahkan mekanisme *auto-retry* 3 kali dengan jeda waktu (*backoff*) 2 detik pada fungsi `fetch_single_sheet` saat mengunduh data live Google Spreadsheet.
   - Menangani kendala fluktuasi jaringan / DNS resolver Windows (`[Errno 11001] getaddrinfo failed`) yang sering terjadi sesaat ketika koneksi Wi-Fi/VPN BPS berkedip atau berganti jaringan, sehingga bot tidak langsung terlempar ke file backup lokal jika koneksi pulih dalam hitungan detik.

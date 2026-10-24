@@ -621,23 +621,21 @@ def check_assignment_status_live(item, chosen_sources):
     col_status = cols.get("status", "AA")
     col_nama = cols.get("nama_usaha", "E")
 
-    uuid = ""
-    parts = link.rstrip("/").split("/")
-    if len(parts) >= 1 and len(parts[-1]) >= 20:
-        uuid = parts[-1]
-
-    clean_n = re.sub(r"[^a-zA-Z0-9\s]", "", nama).strip()
-    words_n = [w for w in clean_n.split() if len(w) > 2]
-    first_word = words_n[0] if words_n else ""
-
-    if uuid and first_word:
-        tq = f"select {col_status} where {col_link} contains '{uuid}' and lower({col_nama}) contains '{first_word.lower()}'"
-    elif uuid:
-        tq = f"select {col_status} where {col_link} contains '{uuid}'"
-    elif first_word:
-        tq = f"select {col_status} where lower({col_nama}) contains '{first_word.lower()}'"
+    # Ekstrak UUID assignment secara presisi menggunakan regex 36 karakter
+    uuids = re.findall(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", link)
+    if uuids:
+        uuid = uuids[-1]
     else:
+        clean_l = link.split("?")[0].rstrip("/").replace("/edit", "")
+        parts = clean_l.split("/")
+        uuid = parts[-1] if (parts and len(parts[-1]) >= 15) else ""
+
+    # JANGAN PERNAH query jika UUID tidak valid / jangan pernah query nama usaha generik saja
+    if not uuid:
         return False, ""
+
+    # PENTING: Selalu select col_nama dan col_status berdasarkan UUID assignment
+    tq = f"select {col_nama}, {col_status} where {col_link} contains '{uuid}'"
 
     params = urllib.parse.urlencode({
         "tqx": "out:csv",
@@ -662,12 +660,25 @@ def check_assignment_status_live(item, chosen_sources):
             if len(lines) > 1:
                 reader = csv.reader(lines)
                 next(reader)  # skip header
-                for row in reader:
-                    if row and row[0].strip():
-                        val = row[0].strip()
+                rows = list(reader)
+                if len(rows) == 1:
+                    val = rows[0][1].strip() if len(rows[0]) > 1 else ""
+                    val_up = val.upper()
+                    if any(d in val_up for d in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
+                        return True, val
+                    return False, ""
+
+                # Multi-usaha pada link ini: cocokkan baris yang sesuai nama usahanya
+                target_name_clean = re.sub(r'[^a-z0-9]', '', nama.lower())
+                for row in rows:
+                    r_nama = row[0].strip() if len(row) > 0 else ""
+                    r_nama_clean = re.sub(r'[^a-z0-9]', '', r_nama.lower())
+                    val = row[1].strip() if len(row) > 1 else ""
+                    if target_name_clean and (target_name_clean in r_nama_clean or r_nama_clean in target_name_clean):
                         val_up = val.upper()
                         if any(d in val_up for d in ["SELESAI", "DONE", "SUDAH", "BERHASIL", "DILEWATI"]):
                             return True, val
+                        return False, ""
     except Exception:
         cfg = load_sync_config()
         urls_map = cfg.get("gas_webapp_urls", {})
@@ -2682,6 +2693,7 @@ def main():
             is_done_live, live_status = check_assignment_status_live(item, chosen_sources)
             if is_done_live:
                 print(f"[SKIP REALTIME - SUDAH SELESAI ({live_status})]")
+                item["is_sheet_done"] = True
                 processed_cache.add(cache_key)
                 save_cache(processed_cache)
                 skip_count += 1
