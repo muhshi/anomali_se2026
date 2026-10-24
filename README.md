@@ -53,6 +53,10 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 ## 📝 Changelog
 
 ### 2026-10-24
+- **Dokumentasi Lengkap Blueprint & Playbook Inti Otomasi Fasih-SM (`CORE_BOT_FASIH_PLAYBOOK.md`)**:
+  - Menyusun panduan arsitektur komprehensif dan katalog kode inti (*core patterns*) otomasi Fasih-SM untuk memfasilitasi pembuatan bot-bot baru (seperti bot pengubah isian field/pertanyaan, verifikator kuesioner, maupun bot batch submit lainnya).
+  - Merangkum 8 modul rekayasa teruji (*battle-tested*): Fast Google Sheets Ingestion & Dynamic Header Resolver, Interactive CLI Multi-Select & 00 Back Navigation, Persistent Anti-Bot Chromium Context & SSO Session, Sidebar Accordion & Multi-Usaha Row Targeting, Universal React/SPA Form Field Modifier Engine, Catatan/Speech Bubble Popover Ingestion, Cascading Submission & Submit Paksa, serta Live Async Sync Google Apps Script.
+  - Menyediakan template boilerplate bot baru siap pakai yang menggabungkan seluruh komponen inti.
 - **Fix TypeError Evaluasi JS & Locator Tombol Catatan Pertanyaan 31 (`tambah_remark_27a.py`)**:
   - Memperbaiki bug JavaScript `TypeError: Cannot use 'in' operator to search for '31' in 31` yang muncul saat mengklik tombol Catatan pada Pertanyaan 31 (mengubah pengecekan menjadi `String(targetQNum).includes("31")`).
   - Menyelaraskan struktur DOM berbasis HTML Fasih-SM: Pertanyaan 31.a berada di dalam kontainer `<div id="nilai_pendapatan_bln...">` dengan label `31. a. Nilai pendapatan barang dan jasa`.
