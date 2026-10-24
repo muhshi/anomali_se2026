@@ -52,6 +52,13 @@ Bot ini berfungsi untuk mengotomatisasi proses klik *checkbox* dan tombol *Rejec
 
 ## 📝 Changelog
 
+### 2026-10-24
+- **Perbaikan Total Sistem Sinkronisasi & Pembersihan Cache Hantu (`tambah_remark_27a.py`)**:
+  - Mengimplementasikan prinsip *Single Source of Truth* (Kebenaran Tunggal): Status penentuan tugas SELESAI kini murni bersumber dari Google Spreadsheet live (status `SELESAI`) dan bukti laporan pengerjaan lokal yang sukses (`laporan_tambah_remark.json`).
+  - Menghilangkan anomali cache hantu yang sebelumnya menyebabkan 6.200+ data kosong di Google Sheets keliru dianggap selesai dan dilewati oleh bot.
+  - Memperbaiki rekap sisa data per kecamatan dan desa di terminal: Kecamatan Karangawen, Demak, Bonang, dsb. kini menampilkan jumlah tugas riil yang belum selesai sesuai dengan baris kosong di Google Spreadsheet secara 100% presisi.
+  - Mengemas ulang arsip distribusi `Bot-Tambah-Remark-SE2026.zip` dengan cache yang telah disanitasi dan siap dibagikan ke rekan kerja.
+
 ### 2026-10-23
 - **Optimasi Instan Sinkronisasi Cache Menu (`sync_cache_from_spreadsheet`)**:
   - Mengeliminasi query ganda redundant (GViz/GAS) dan perulangan bersarang (*nested loop* O(N*M)) yang sebelumnya melakukan ratusan juta komparasi string sehingga membuat terminal membeku 40–50 detik setiap memilih filter wilayah.

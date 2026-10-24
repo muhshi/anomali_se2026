@@ -536,35 +536,49 @@ def fetch_completed_from_spreadsheet(source_info):
 
 def sync_cache_from_spreadsheet(raw_data, chosen_sources, processed_cache, verbose=True):
     """
-    Menyinkronkan status pengerjaan antara Google Sheets (raw_data) dan cache lokal secara instan (O(N) ~0.01 detik).
-    Mengeliminasi perulangan lambat / query berulang sehingga menu terminal terbuka seketika.
-    Akurat untuk multi-usaha.
+    Menyinkronkan status pengerjaan antara Google Sheets (live) dan cache lokal secara instan (O(N) ~0.01 detik).
+    Prinsip Kebenaran Tunggal (Single Source of Truth):
+    1. Sebuah baris dianggap SELESAI jika dan hanya jika:
+       a) Di Google Sheet kolom 'Status Pengerjaan' bertuliskan SELESAI / DONE / SUDAH / BERHASIL / DILEWATI.
+       b) Terdapat bukti pengerjaan sukses di file laporan lokal ('laporan_tambah_remark.json').
+    2. Menyingkirkan entri 'cache hantu' (entri lama di file JSON yang di Google Sheet-nya masih KOSONG dan belum pernah dikerjakan).
+    3. Akurat untuk multi-usaha (key unik link::nama_usaha).
     """
     t0 = time.time()
-    total_synced_now = 0
 
-    # 1. Sinkronkan dua arah antara raw_data (hasil unduh live sheet) dan processed_cache
+    # A. Kumpulkan seluruh key dari baris yang BENAR-BENAR berstatus selesai di live Google Sheet
+    sheet_done_keys = set()
     for item in raw_data:
-        link = item.get("link", "")
-        nama = item.get("nama_usaha", "")
-        key = make_cache_key(link, nama)
-
         if item.get("is_sheet_done"):
-            # Jika di Google Sheet sudah SELESAI, masukkan ke cache lokal
-            if key not in processed_cache:
-                processed_cache.add(key)
-                total_synced_now += 1
-        elif key in processed_cache:
-            # Jika di cache lokal sudah ada (pernah dikerjakan), tandai is_sheet_done di memori
-            item["is_sheet_done"] = True
+            key = make_cache_key(item.get("link", ""), item.get("nama_usaha", ""))
+            sheet_done_keys.add(key)
 
-    # 2. Simpan cache yang terupdate ke JSON
+    # B. Kumpulkan seluruh key dari file laporan pengerjaan lokal yang terbukti sukses
+    report_done_keys = set()
+    for rep in load_report_data():
+        if rep.get("status") in ["SUCCESS", "DILEWATI"]:
+            key = make_cache_key(rep.get("link", ""), rep.get("nama_usaha", ""))
+            report_done_keys.add(key)
+
+    # C. Himpunan data selesai yang valid adalah gabungan (Sheet Live + Bukti Laporan Lokal)
+    valid_done_keys = sheet_done_keys | report_done_keys
+
+    # D. Rekonstruksi processed_cache hanya dengan data yang valid (otomatis membuang cache hantu)
+    processed_cache.clear()
+    processed_cache.update(valid_done_keys)
+
+    # E. Sinkronkan status is_sheet_done pada data in-memory (hanya True jika ada di valid_done_keys)
+    for item in raw_data:
+        key = make_cache_key(item.get("link", ""), item.get("nama_usaha", ""))
+        item["is_sheet_done"] = (key in valid_done_keys)
+
+    # F. Simpan cache bersih ke file JSON lokal
     save_cache(processed_cache)
 
     if verbose:
-        print(f" -> [SYNC OK ({time.time()-t0:.2f}s)] Total {len(processed_cache)} entri tersinkron di cache JSON lokal.")
+        print(f" -> [SYNC OK ({time.time()-t0:.2f}s)] Total {len(processed_cache)} entri selesai tersinkron (Realtime Google Sheet + Laporan Lokal).")
 
-    return total_synced_now
+    return len(processed_cache)
 
 def check_assignment_status_live(item, chosen_sources):
     """
